@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import { createClient } from "@/lib/supabase/client";
-import { locationStatusLabels } from "@/lib/utils";
+import { locationStatusLabels, navigationLink } from "@/lib/utils";
 import type { Location } from "@/lib/types";
 
 const driverIcon = L.divIcon({
@@ -113,6 +113,14 @@ export function LiveMap({ locations, driverId }: { locations: Location[]; driver
                   <p className="font-medium">{loc.label}</p>
                   <p className="text-xs text-slate-500">{loc.address}</p>
                   <p className="text-xs mt-1">{locationStatusLabels[loc.status]}</p>
+                  <a
+                    href={navigationLink(loc.lat, loc.lng, loc.address) ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-block text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Navigate here →
+                  </a>
                 </Popup>
               </Marker>
             ))}

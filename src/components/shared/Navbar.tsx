@@ -1,19 +1,8 @@
 import Link from "next/link";
 import { Truck } from "lucide-react";
 import type { Profile } from "@/lib/types";
+import { ADMIN_LINKS, DRIVER_LINKS } from "@/lib/navLinks";
 import { SignOutButton } from "./SignOutButton";
-
-const ADMIN_LINKS = [
-  { href: "/admin/dashboard", label: "Dashboard" },
-  { href: "/admin/projects", label: "Projects" },
-  { href: "/admin/gallery", label: "Gallery" },
-];
-
-const DRIVER_LINKS = [
-  { href: "/driver/locations", label: "My Locations" },
-  { href: "/driver/map", label: "Route Map" },
-  { href: "/driver/gallery", label: "My Reports" },
-];
 
 export function Navbar({ profile }: { profile: Profile }) {
   const links = profile.role === "admin" ? ADMIN_LINKS : DRIVER_LINKS;
@@ -47,17 +36,6 @@ export function Navbar({ profile }: { profile: Profile }) {
           <SignOutButton />
         </div>
       </div>
-      <nav className="flex sm:hidden items-center gap-1 px-4 pb-2 overflow-x-auto">
-        {links.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
     </header>
   );
 }

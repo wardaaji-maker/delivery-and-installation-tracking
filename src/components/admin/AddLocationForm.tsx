@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
+import { geocodeAddress } from "@/lib/geocode";
 
 export function AddLocationForm({ projectId }: { projectId: string }) {
   const router = useRouter();
@@ -32,14 +33,29 @@ export function AddLocationForm({ projectId }: { projectId: string }) {
     e.preventDefault();
     setLoading(true);
 
+    let finalLat = lat ? Number(lat) : null;
+    let finalLng = lng ? Number(lng) : null;
+
+    if (finalLat == null && finalLng == null) {
+      const geocoded = await geocodeAddress(address);
+      if (geocoded) {
+        finalLat = geocoded.lat;
+        finalLng = geocoded.lng;
+      } else {
+        toast("Couldn't auto-locate that address on the map — you can add coordinates later", {
+          icon: "⚠️",
+        });
+      }
+    }
+
     const { error } = await supabase.from("locations").insert({
       project_id: projectId,
       label,
       address,
       receiver_name: receiverName || null,
       receiver_phone: receiverPhone || null,
-      lat: lat ? Number(lat) : null,
-      lng: lng ? Number(lng) : null,
+      lat: finalLat,
+      lng: finalLng,
     });
 
     setLoading(false);
@@ -98,13 +114,13 @@ export function AddLocationForm({ projectId }: { projectId: string }) {
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <input
-          placeholder="Latitude (optional)"
+          placeholder="Latitude (auto-detected if left blank)"
           value={lat}
           onChange={(e) => setLat(e.target.value)}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <input
-          placeholder="Longitude (optional)"
+          placeholder="Longitude (auto-detected if left blank)"
           value={lng}
           onChange={(e) => setLng(e.target.value)}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -116,7 +132,7 @@ export function AddLocationForm({ projectId }: { projectId: string }) {
           disabled={loading}
           className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700 transition disabled:opacity-60"
         >
-          {loading ? "Adding..." : "Add location"}
+          {loading ? "Locating & adding..." : "Add location"}
         </button>
         <button
           type="button"

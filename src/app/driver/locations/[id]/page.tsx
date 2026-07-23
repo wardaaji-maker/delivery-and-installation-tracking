@@ -3,6 +3,7 @@ import { MapPin } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { LocationStatusBadge } from "@/components/shared/StatusBadge";
 import { WhatsAppButton } from "@/components/shared/WhatsAppButton";
+import { NavigateButton } from "@/components/shared/NavigateButton";
 import { PhotoReportForm } from "@/components/driver/PhotoReportForm";
 import { formatDateTime } from "@/lib/utils";
 import type { Location, PhotoReport } from "@/lib/types";
@@ -60,15 +61,16 @@ export default async function DriverLocationDetailPage({
             <span className="text-slate-900">{loc.notes}</span>
           </p>
         )}
-        {loc.receiver_phone && (
-          <div className="pt-2">
+        <div className="pt-2 flex flex-wrap gap-2">
+          <NavigateButton lat={loc.lat} lng={loc.lng} address={loc.address} />
+          {loc.receiver_phone && (
             <WhatsAppButton
               phone={loc.receiver_phone}
               label="Message receiver on WhatsApp"
               message={`Hi ${loc.receiver_name ?? ""}, this is regarding your delivery/installation at ${loc.address}.`}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <PhotoReportForm locationId={id} />

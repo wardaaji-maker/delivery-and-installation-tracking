@@ -7,6 +7,7 @@ import { Upload, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { geocodeAddress, sleep } from "@/lib/geocode";
 
 interface ParsedRow {
   label: string;
@@ -68,6 +69,7 @@ export function BulkLocationImport({ projectId }: { projectId: string }) {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [geocodeProgress, setGeocodeProgress] = useState<{ done: number; total: number } | null>(null);
 
   function handleFile(file: File) {
     setFileName(file.name);
@@ -106,12 +108,31 @@ export function BulkLocationImport({ projectId }: { projectId: string }) {
     if (rows.length === 0) return;
     setImporting(true);
 
-    const payload = rows.map((r) => ({
+    const coords: ({ lat: number; lng: number } | null)[] = rows.map((r) =>
+      r.lat && r.lng ? { lat: Number(r.lat), lng: Number(r.lng) } : null
+    );
+
+    const toGeocode = rows
+      .map((r, i) => ({ i, address: r.address || r.label }))
+      .filter(({ i }) => coords[i] === null);
+
+    if (toGeocode.length > 0) {
+      setGeocodeProgress({ done: 0, total: toGeocode.length });
+      for (let n = 0; n < toGeocode.length; n++) {
+        const { i, address } = toGeocode[n];
+        coords[i] = await geocodeAddress(address);
+        setGeocodeProgress({ done: n + 1, total: toGeocode.length });
+        if (n < toGeocode.length - 1) await sleep(1100); // respect Nominatim's ~1 req/sec limit
+      }
+      setGeocodeProgress(null);
+    }
+
+    const payload = rows.map((r, i) => ({
       project_id: projectId,
       label: r.label || r.address || "Untitled location",
       address: r.address || r.label,
-      lat: r.lat ? Number(r.lat) : null,
-      lng: r.lng ? Number(r.lng) : null,
+      lat: coords[i]?.lat ?? null,
+      lng: coords[i]?.lng ?? null,
       receiver_name: r.receiver_name || null,
       receiver_phone: r.receiver_phone || null,
       notes: r.notes || null,
@@ -126,7 +147,11 @@ export function BulkLocationImport({ projectId }: { projectId: string }) {
       return;
     }
 
-    toast.success(`Imported ${payload.length} location${payload.length === 1 ? "" : "s"}`);
+    const unlocated = payload.filter((p) => p.lat == null).length;
+    toast.success(
+      `Imported ${payload.length} location${payload.length === 1 ? "" : "s"}` +
+        (unlocated ? ` — ${unlocated} couldn't be placed on the map` : "")
+    );
     clearFile();
     router.refresh();
   }
@@ -198,7 +223,11 @@ export function BulkLocationImport({ projectId }: { projectId: string }) {
             disabled={importing || rows.length === 0}
             className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700 transition disabled:opacity-60"
           >
-            {importing ? "Importing..." : `Import ${rows.length} location${rows.length === 1 ? "" : "s"}`}
+            {geocodeProgress
+              ? `Locating addresses on map (${geocodeProgress.done}/${geocodeProgress.total})...`
+              : importing
+                ? "Importing..."
+                : `Import ${rows.length} location${rows.length === 1 ? "" : "s"}`}
           </button>
         </div>
       )}

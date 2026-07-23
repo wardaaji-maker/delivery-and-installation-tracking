@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
 import { LocationStatusBadge } from "@/components/shared/StatusBadge";
 import { WhatsAppButton } from "@/components/shared/WhatsAppButton";
+import { NavigateButton } from "@/components/shared/NavigateButton";
 import type { Location, LocationStatus } from "@/lib/types";
 
 const NEXT_STATUS: Partial<Record<LocationStatus, LocationStatus>> = {
@@ -58,6 +59,7 @@ export function LocationCard({ location, projectName }: { location: Location; pr
       {location.notes && <p className="text-sm text-slate-500 mb-3">{location.notes}</p>}
 
       <div className="flex flex-wrap items-center gap-2 mt-3">
+        <NavigateButton lat={location.lat} lng={location.lng} address={location.address} />
         <WhatsAppButton
           phone={location.receiver_phone}
           label="Contact receiver"

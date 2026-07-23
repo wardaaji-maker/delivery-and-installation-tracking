@@ -7,6 +7,21 @@ export function whatsappLink(phone: string, message?: string) {
   return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }
 
+/** Builds a Google Maps turn-by-turn directions link — opens the native app on mobile. */
+export function navigationLink(
+  lat: number | null,
+  lng: number | null,
+  address?: string | null
+): string | null {
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  }
+  if (address) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
+  }
+  return null;
+}
+
 export function formatDate(value: string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("en-US", {
