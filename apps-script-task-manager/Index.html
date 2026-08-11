@@ -273,6 +273,7 @@
       <h2>Who are you?</h2>
       <p>Pick your name — this device will remember it, and it's used to attribute task reports and to check schedule-edit permission.</p>
       <div id="identityList"></div>
+      <button type="button" class="btn btn-secondary btn-small" style="margin-top:10px;" onclick="skipIdentity()">Skip for now — just browsing</button>
     </div>
   </div>
 
@@ -316,17 +317,32 @@
     // ---- identity ----
     function showIdentityOverlay() {
       const list = document.getElementById('identityList');
-      list.innerHTML = config.positions.map(pos => {
-        const roster = allPeople.filter(p => p.position === pos && p.active);
-        if (roster.length === 0) return '';
+      const anyone = allPeople.some(p => p.active);
+      const roster = config.positions.map(pos => {
+        const people = allPeople.filter(p => p.position === pos && p.active);
+        if (people.length === 0) return '';
         return `
           <div class="person-pick-group">
             <h4>${pos}</h4>
-            ${roster.map(p => `<button type="button" class="person-pick" onclick="selectIdentity('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
+            ${people.map(p => `<button type="button" class="person-pick" onclick="selectIdentity('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
           </div>
         `;
-      }).join('') || '<div class="empty">No one in the Team tab yet — add people there first.</div>';
+      }).join('');
+      list.innerHTML = anyone
+        ? roster
+        : `<div class="empty">No one in the Team tab yet.</div>
+           <button type="button" class="btn btn-primary btn-small" onclick="skipIdentityToTeam()">Go add people in Team →</button>`;
       document.getElementById('identityOverlay').classList.remove('hidden');
+    }
+
+    /** Lets you browse without picking an identity yet — e.g. to add yourself in Team first. */
+    function skipIdentity() {
+      hideIdentityOverlay();
+    }
+
+    function skipIdentityToTeam() {
+      hideIdentityOverlay();
+      document.querySelector('nav.tabs button[data-tab="team"]').click();
     }
 
     function hideIdentityOverlay() {
