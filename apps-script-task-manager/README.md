@@ -21,7 +21,8 @@ so that piece can be added later (e.g. a Gmail trigger calling `addTask`).
 - Mark tasks In Progress / Done, or delete them.
 - A daily time-based trigger (`sendDailyReminders`) sends a **WhatsApp**
   reminder via Fonnte to each task's assignee for anything due today or
-  overdue, plus a summary message to you (`OWNER_PHONE`).
+  overdue, plus a summary message to `REMINDER_TARGETS` — your number,
+  a WhatsApp group, or both.
 
 ## Setup
 
@@ -36,8 +37,13 @@ so that piece can be added later (e.g. a Gmail trigger calling `addTask`).
      "appsscript.json"**, then paste its contents into the manifest editor.
 4. **Project Settings → Script Properties**, add:
    - `FONNTE_TOKEN` — your Fonnte device token (same one your CRM uses).
-   - `OWNER_PHONE` — your WhatsApp number in international format
-     (e.g. `628123456789`) to receive the daily summary.
+   - `REMINDER_TARGETS` — where the daily summary goes: a comma-separated
+     list of WhatsApp numbers and/or group IDs, e.g.
+     `628123456789,120363012345678901@g.us`. To find a group's ID, either
+     check the group list in your Fonnte device dashboard, or send any
+     message in the group and read the `sender`/`group` field of the
+     inbound webhook payload if you have one configured — Fonnte accepts
+     that same ID back as a `target`.
 5. In the Apps Script editor, select the `createDailyTrigger` function
    in the toolbar dropdown and click **Run** once — this schedules
    `sendDailyReminders` to run every day at 07:00 (script timezone,
@@ -56,3 +62,7 @@ so that piece can be added later (e.g. a Gmail trigger calling `addTask`).
   run, so one failed message won't block the rest).
 - To change the reminder time, edit `.atHour(7)` in `createDailyTrigger`
   in `Code.gs`, then re-run `createDailyTrigger` to replace the trigger.
+- To test group delivery before waiting for the daily trigger, select
+  `sendDailyReminders` in the editor's function dropdown and click **Run**
+  — it sends immediately using whatever's in `REMINDER_TARGETS` and at
+  least one non-Done task with a due date today or earlier.

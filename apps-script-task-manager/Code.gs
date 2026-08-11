@@ -5,8 +5,12 @@
  * Reminders: sent via the Fonnte WhatsApp API (https://fonnte.com).
  *
  * Script Properties (Project Settings → Script Properties):
- *   FONNTE_TOKEN  - your Fonnte device token (required to send WhatsApp reminders)
- *   OWNER_PHONE   - WhatsApp number (e.g. 628123456789) that gets the daily summary
+ *   FONNTE_TOKEN      - your Fonnte device token (required to send WhatsApp reminders)
+ *   REMINDER_TARGETS  - comma-separated list of WhatsApp numbers and/or group
+ *                       IDs that get the daily summary, e.g.
+ *                       "628123456789,120363012345678901@g.us"
+ *                       (find a group's ID in the Fonnte dashboard's device
+ *                       group list, or from an inbound webhook payload).
  */
 
 const SHEET_NAME = 'Tasks';
@@ -105,14 +109,19 @@ function deleteTask(id) {
   return true;
 }
 
-function sendFonnteMessage(phone, message) {
+/**
+ * Sends a WhatsApp message via Fonnte. `target` is a single phone number,
+ * a single group ID, or a comma-separated mix of both — Fonnte fans a
+ * comma-separated target out to every recipient in one call.
+ */
+function sendFonnteMessage(target, message) {
   const token = PropertiesService.getScriptProperties().getProperty('FONNTE_TOKEN');
   if (!token) throw new Error('FONNTE_TOKEN is not set in Script Properties');
-  if (!phone) throw new Error('No phone number given');
+  if (!target) throw new Error('No target (phone/group) given');
   const response = UrlFetchApp.fetch(FONNTE_API_URL, {
     method: 'post',
     headers: { Authorization: token },
-    payload: { target: String(phone), message: message },
+    payload: { target: String(target), message: message },
     muteHttpExceptions: true,
   });
   return response.getContentText();
@@ -120,15 +129,16 @@ function sendFonnteMessage(phone, message) {
 
 /**
  * Sends a WhatsApp reminder (via Fonnte) for every task that is due today or
- * overdue and not yet Done — one message per assignee, plus a summary to
- * OWNER_PHONE. Meant to run on a daily time-based trigger.
+ * overdue and not yet Done — one message per assignee, plus a summary sent
+ * to everything in REMINDER_TARGETS (your number, a group, or both). Meant
+ * to run on a daily time-based trigger.
  */
 function sendDailyReminders() {
   const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
   const tz = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  const ownerPhone = PropertiesService.getScriptProperties().getProperty('OWNER_PHONE');
+  const reminderTargets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
 
   const due = [];
   for (let i = 1; i < data.length; i++) {
@@ -159,7 +169,7 @@ function sendDailyReminders() {
     sheet.getRange(task.row, 10).setValue(new Date());
   });
 
-  if (ownerPhone && due.length > 0) {
+  if (reminderTargets && due.length > 0) {
     const lines = due.map((task) => {
       const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
       const label = task.overdue ? 'Overdue' : 'Due today';
@@ -167,7 +177,7 @@ function sendDailyReminders() {
     });
     const summary = `📋 Daily Task Summary — ${due.length} task(s) need attention:\n\n${lines.join('\n')}`;
     try {
-      sendFonnteMessage(ownerPhone, summary);
+      sendFonnteMessage(reminderTargets, summary);
     } catch (err) {
       Logger.log('Daily summary failed: %s', err);
     }
