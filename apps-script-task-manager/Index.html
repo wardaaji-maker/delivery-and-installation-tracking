@@ -7,54 +7,103 @@
       --high: #e5484d;
       --medium: #f5a623;
       --low: #30a46c;
-      --border: #e2e2e2;
-      --bg: #f9f9f9;
+      --border: #e5e5e5;
+      --bg: #f5f6f8;
+      --ink: #1a1a1a;
+      --muted: #767676;
+      --accent: #2f5fe0;
     }
     * { box-sizing: border-box; }
     body {
       font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       margin: 0;
-      padding: 16px;
       background: var(--bg);
-      color: #1a1a1a;
+      color: var(--ink);
     }
-    h1 { font-size: 20px; margin: 0 0 16px; }
+    .app { max-width: 840px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+
+    nav.tabs {
+      display: flex;
+      gap: 4px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 16px;
+    }
+    nav.tabs button {
+      flex: 1;
+      padding: 9px 10px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    nav.tabs button.active { background: var(--ink); color: #fff; }
+
+    .tabpanel { display: none; }
+    .tabpanel.active { display: block; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .stat {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat .n { font-size: 22px; font-weight: 700; }
+    .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
     .card {
       background: #fff;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 16px;
       margin-bottom: 16px;
     }
     .card h2 { font-size: 15px; margin: 0 0 12px; }
-    form.grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
+
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
     }
-    form.grid .full { grid-column: 1 / -1; }
-    label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+    .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .filters select { width: auto; }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
     input, select, textarea {
       width: 100%;
       padding: 8px;
       border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 14px;
+      font-family: inherit;
     }
     textarea { resize: vertical; min-height: 44px; }
-    button {
-      cursor: pointer;
-      border: none;
-      border-radius: 6px;
-      padding: 9px 14px;
-      font-size: 14px;
-      font-weight: 600;
-    }
-    .btn-primary { background: #1a1a1a; color: #fff; }
-    .btn-secondary { background: #eee; color: #1a1a1a; }
+    form.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    form.grid .full { grid-column: 1 / -1; }
+
+    button.btn { cursor: pointer; border: none; border-radius: 6px; padding: 9px 14px; font-size: 14px; font-weight: 600; }
+    .btn-primary { background: var(--ink); color: #fff; }
+    .btn-secondary { background: #eee; color: var(--ink); }
     .btn-danger { background: #fdecea; color: var(--high); }
-    .filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-    .filters select { width: auto; }
+    .btn-small { padding: 6px 10px; font-size: 12px; }
+
     .task {
       display: flex;
       justify-content: space-between;
@@ -62,125 +111,277 @@
       gap: 10px;
       padding: 12px;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       margin-bottom: 8px;
       background: #fff;
     }
-    .task.done { opacity: 0.55; }
+    .task.faded { opacity: 0.55; }
     .task-main { flex: 1; min-width: 0; }
     .task-title { font-weight: 600; font-size: 14px; }
     .task-title.done { text-decoration: line-through; }
     .task-desc { font-size: 13px; color: #555; margin-top: 2px; white-space: pre-wrap; }
     .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
-    .badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 999px;
-      color: #fff;
-    }
+    .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; }
     .badge.High { background: var(--high); }
     .badge.Medium { background: var(--medium); }
     .badge.Low { background: var(--low); }
     .badge.overdue { background: var(--high); }
     .badge.today { background: #ff8a3d; }
     .badge.upcoming { background: #999; }
-    .badge.status { background: #333; }
-    .actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .actions button { padding: 6px 10px; font-size: 12px; }
-    .empty { color: #999; font-size: 14px; padding: 12px 0; }
+    .badge.done { background: var(--low); }
+    .badge.category { background: var(--accent); }
+    .muted-text { font-size: 12px; color: var(--muted); }
+    .actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 130px; }
+    .empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+
+    .position-group { margin-bottom: 18px; }
+    .position-group h3 { font-size: 14px; margin: 0 0 8px; }
+    .person-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .person-row:last-child { border-bottom: none; }
+    .person-row input[type=text] { flex: 1; }
+    .person-row input[type=checkbox] { width: auto; }
+    .add-person-row { display: flex; gap: 8px; margin-top: 10px; }
+    .add-person-row input { flex: 1; }
   </style>
 </head>
 <body>
-  <h1>📋 Task Manager</h1>
+  <div class="app">
+    <h1>📋 Task Manager</h1>
+    <p class="subtitle">Showroom Manager → Showroom Manager Partner → Product Consultant</p>
 
-  <div class="card">
-    <h2>New task</h2>
-    <form class="grid" id="taskForm">
-      <div class="full">
-        <label>Title</label>
-        <input type="text" id="title" required>
-      </div>
-      <div class="full">
-        <label>Description</label>
-        <textarea id="description"></textarea>
-      </div>
-      <div>
-        <label>Priority</label>
-        <select id="priority">
-          <option value="High">High</option>
-          <option value="Medium" selected>Medium</option>
-          <option value="Low">Low</option>
-        </select>
-      </div>
-      <div>
-        <label>Due date</label>
-        <input type="date" id="dueDate">
-      </div>
-      <div>
-        <label>Assignee name</label>
-        <input type="text" id="assigneeName" placeholder="optional">
-      </div>
-      <div>
-        <label>Assignee WhatsApp (Fonnte target)</label>
-        <input type="text" id="assigneePhone" placeholder="e.g. 628123456789">
-      </div>
-      <div class="full">
-        <button type="submit" class="btn-primary">Add task</button>
-      </div>
-    </form>
-  </div>
+    <nav class="tabs">
+      <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="newtask">New Task</button>
+      <button data-tab="team">Team</button>
+    </nav>
 
-  <div class="card">
-    <h2>Tasks</h2>
-    <div class="filters">
-      <select id="filterStatus">
-        <option value="">All statuses</option>
-        <option value="Pending">Pending</option>
-        <option value="In Progress">In Progress</option>
-        <option value="Done">Done</option>
-      </select>
-      <select id="filterPriority">
-        <option value="">All priorities</option>
-        <option value="High">High</option>
-        <option value="Medium">Medium</option>
-        <option value="Low">Low</option>
-      </select>
-    </div>
-    <div id="taskList"><div class="empty">Loading…</div></div>
+    <section id="tab-dashboard" class="tabpanel active">
+      <div class="stats">
+        <div class="stat"><div class="n" id="statDueToday">0</div><div class="l">Due today</div></div>
+        <div class="stat"><div class="n" id="statOverdue">0</div><div class="l">Overdue</div></div>
+        <div class="stat"><div class="n" id="statHigh">0</div><div class="l">High priority pending</div></div>
+      </div>
+
+      <div class="card">
+        <div class="chips" id="categoryChips"></div>
+        <div class="filters">
+          <select id="filterPosition"><option value="">All positions</option></select>
+          <select id="filterPriority">
+            <option value="">All priorities</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">
+            <input type="checkbox" id="filterShowPaused" style="width:auto;"> Show paused
+          </label>
+        </div>
+        <div id="taskList"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
+
+    <section id="tab-newtask" class="tabpanel">
+      <div class="card">
+        <h2>Create a task</h2>
+        <form class="grid" id="taskForm">
+          <div class="full">
+            <label>Title</label>
+            <input type="text" id="title" required>
+          </div>
+          <div class="full">
+            <label>Description</label>
+            <textarea id="description"></textarea>
+          </div>
+          <div>
+            <label>Priority</label>
+            <select id="priority">
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+          <div>
+            <label>Category</label>
+            <select id="category"></select>
+          </div>
+          <div class="full" id="weeklyField" style="display:none;">
+            <label>Which day of the week</label>
+            <select id="weekday"></select>
+          </div>
+          <div class="full" id="monthlyField" style="display:none;">
+            <label>Which day of the month</label>
+            <input type="number" id="dayOfMonth" min="1" max="31">
+          </div>
+          <div class="full" id="oneTimeField" style="display:none;">
+            <label>Due date</label>
+            <input type="date" id="dueDate">
+          </div>
+          <div>
+            <label>Position</label>
+            <select id="position"></select>
+          </div>
+          <div>
+            <label>Assignee</label>
+            <select id="assigneeName"></select>
+          </div>
+          <div class="full">
+            <button type="submit" class="btn btn-primary">Add task</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="tab-team" class="tabpanel">
+      <div class="card" id="teamCard">
+        <h2>Team</h2>
+        <div id="teamList"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
   </div>
 
   <script>
-    const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
+    let config = { positions: [], categories: [], weekdays: [] };
     let allTasks = [];
+    let allPeople = [];
+    let activeCategory = 'All';
 
-    function todayStr() {
-      const d = new Date();
-      return d.toISOString().slice(0, 10);
+    function todayStr() { return new Date().toISOString().slice(0, 10); }
+    function todayWeekdayName() {
+      return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+    }
+    function todayDayOfMonth() { return new Date().getDate(); }
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
     }
 
-    function dueBadge(task) {
-      if (task.status === 'Done' || !task.dueDate) return '';
+    // ---- tabs ----
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tabpanel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ---- bootstrap ----
+    google.script.run.withSuccessHandler(cfg => {
+      config = cfg;
+      document.getElementById('categoryChips').innerHTML = ['All'].concat(cfg.categories).map(c =>
+        `<button type="button" class="chip ${c === 'All' ? 'active' : ''}" data-cat="${c}">${c}</button>`
+      ).join('');
+      document.querySelectorAll('#categoryChips .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          activeCategory = chip.dataset.cat;
+          document.querySelectorAll('#categoryChips .chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          renderTasks();
+        });
+      });
+
+      document.getElementById('category').innerHTML = cfg.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+      document.getElementById('weekday').innerHTML = cfg.weekdays.map(w => `<option value="${w}">${w}</option>`).join('');
+      document.getElementById('position').innerHTML = cfg.positions.map(p => `<option value="${p}">${p}</option>`).join('');
+      document.getElementById('filterPosition').innerHTML += cfg.positions.map(p => `<option value="${p}">${p}</option>`).join('');
+      onCategoryChange();
+      onPositionChange();
+
+      loadPeople();
+      loadTasks();
+    }).getConfig();
+
+    document.getElementById('category').addEventListener('change', onCategoryChange);
+    document.getElementById('position').addEventListener('change', onPositionChange);
+    document.getElementById('filterPosition').addEventListener('change', renderTasks);
+    document.getElementById('filterPriority').addEventListener('change', renderTasks);
+    document.getElementById('filterShowPaused').addEventListener('change', renderTasks);
+
+    function onCategoryChange() {
+      const cat = document.getElementById('category').value;
+      document.getElementById('weeklyField').style.display = cat === 'Weekly' ? 'block' : 'none';
+      document.getElementById('monthlyField').style.display = cat === 'Monthly' ? 'block' : 'none';
+      document.getElementById('oneTimeField').style.display = cat === 'One-time' ? 'block' : 'none';
+    }
+
+    function onPositionChange() {
+      const pos = document.getElementById('position').value;
+      const roster = allPeople.filter(p => p.position === pos && p.active);
+      const select = document.getElementById('assigneeName');
+      select.innerHTML = '<option value="All">All (everyone in this position)</option>' +
+        roster.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+    }
+
+    // ---- tasks ----
+    function loadTasks() {
+      google.script.run.withSuccessHandler(tasks => { allTasks = tasks; renderTasks(); }).getTasks();
+    }
+
+    function scheduleLabel(t) {
+      if (t.category === 'Daily Routine') return 'Every day';
+      if (t.category === 'Weekly') return 'Every ' + t.weekday;
+      if (t.category === 'Monthly') return 'Day ' + t.dayOfMonth + ' of month';
+      return 'Due ' + (t.dueDate || '—');
+    }
+
+    function occurrence(t) {
       const today = todayStr();
-      if (task.dueDate < today) return '<span class="badge overdue">Overdue</span>';
-      if (task.dueDate === today) return '<span class="badge today">Due today</span>';
-      return '<span class="badge upcoming">Upcoming</span>';
+      if (t.category === 'One-time') {
+        if (t.status === 'Done') return { label: 'Done', cls: 'done', isDone: true, isDueToday: false, isOverdue: false };
+        if (t.dueDate && t.dueDate < today) return { label: 'Overdue', cls: 'overdue', isDone: false, isDueToday: true, isOverdue: true };
+        if (t.dueDate === today) return { label: 'Due today', cls: 'today', isDone: false, isDueToday: true, isOverdue: false };
+        return { label: 'Upcoming', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
+      }
+      const scheduledToday =
+        t.category === 'Daily Routine' ||
+        (t.category === 'Weekly' && t.weekday === todayWeekdayName()) ||
+        (t.category === 'Monthly' && String(t.dayOfMonth) === String(todayDayOfMonth()));
+      const doneToday = t.lastCompletedDate === today;
+      if (!t.active) return { label: 'Paused', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
+      if (doneToday) return { label: 'Done today', cls: 'done', isDone: true, isDueToday: scheduledToday, isOverdue: false };
+      if (scheduledToday) return { label: 'Due today', cls: 'today', isDone: false, isDueToday: true, isOverdue: false };
+      return { label: 'Not today', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
     }
 
-    function render() {
-      const status = document.getElementById('filterStatus').value;
-      const priority = document.getElementById('filterPriority').value;
+    function renderTasks() {
+      const posFilter = document.getElementById('filterPosition').value;
+      const prioFilter = document.getElementById('filterPriority').value;
+      const showPaused = document.getElementById('filterShowPaused').checked;
+
       let tasks = allTasks.filter(t =>
-        (!status || t.status === status) && (!priority || t.priority === priority)
+        (activeCategory === 'All' || t.category === activeCategory) &&
+        (!posFilter || t.position === posFilter) &&
+        (!prioFilter || t.priority === prioFilter) &&
+        (showPaused || t.active)
       );
+
+      const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
       tasks.sort((a, b) => {
-        if (a.status === 'Done' && b.status !== 'Done') return 1;
-        if (b.status === 'Done' && a.status !== 'Done') return -1;
+        const oa = occurrence(a), ob = occurrence(b);
+        if (oa.isDone !== ob.isDone) return oa.isDone ? 1 : -1;
         const p = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
         if (p !== 0) return p;
-        return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
+        return a.title.localeCompare(b.title);
       });
+
+      // stats (computed over all active tasks, not the filtered view)
+      let dueToday = 0, overdue = 0, highPending = 0;
+      allTasks.filter(t => t.active).forEach(t => {
+        const o = occurrence(t);
+        if (o.isDueToday && !o.isDone) dueToday++;
+        if (o.isOverdue) overdue++;
+        if (o.isDueToday && !o.isDone && t.priority === 'High') highPending++;
+      });
+      document.getElementById('statDueToday').textContent = dueToday;
+      document.getElementById('statOverdue').textContent = overdue;
+      document.getElementById('statHigh').textContent = highPending;
 
       const list = document.getElementById('taskList');
       if (tasks.length === 0) {
@@ -188,49 +389,55 @@
         return;
       }
 
-      list.innerHTML = tasks.map(t => `
-        <div class="task ${t.status === 'Done' ? 'done' : ''}">
-          <div class="task-main">
-            <div class="task-title ${t.status === 'Done' ? 'done' : ''}">${escapeHtml(t.title)}</div>
-            ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
-            <div class="meta">
-              <span class="badge ${t.priority}">${t.priority}</span>
-              <span class="badge status">${t.status}</span>
-              ${dueBadge(t)}
-              ${t.dueDate ? `<span style="font-size:12px;color:#888;">Due ${t.dueDate}</span>` : ''}
-              ${t.assigneeName ? `<span style="font-size:12px;color:#888;">→ ${escapeHtml(t.assigneeName)}</span>` : ''}
+      list.innerHTML = tasks.map(t => {
+        const o = occurrence(t);
+        const isRecurring = t.category !== 'One-time';
+        let doneToggleBtn;
+        if (isRecurring) {
+          doneToggleBtn = o.isDone
+            ? `<button type="button" class="btn btn-secondary btn-small" onclick="reopenOccurrence('${t.id}')">Reopen</button>`
+            : `<button type="button" class="btn btn-secondary btn-small" onclick="markDone('${t.id}')">Done today</button>`;
+        } else {
+          doneToggleBtn = t.status !== 'Done'
+            ? `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','Done')">Done</button>`
+            : `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','Pending')">Reopen</button>`;
+        }
+        const startBtn = (!isRecurring && t.status === 'Pending')
+          ? `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','In Progress')">Start</button>` : '';
+        const pauseBtn = isRecurring
+          ? (t.active
+              ? `<button type="button" class="btn btn-secondary btn-small" onclick="setActive('${t.id}',false)">Pause</button>`
+              : `<button type="button" class="btn btn-secondary btn-small" onclick="setActive('${t.id}',true)">Resume</button>`)
+          : '';
+
+        return `
+          <div class="task ${o.isDone || !t.active ? 'faded' : ''}">
+            <div class="task-main">
+              <div class="task-title ${o.isDone ? 'done' : ''}">${escapeHtml(t.title)}</div>
+              ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
+              <div class="meta">
+                <span class="badge category">${t.category}</span>
+                <span class="badge ${t.priority}">${t.priority}</span>
+                <span class="badge ${o.cls}">${o.label}</span>
+                <span class="muted-text">${scheduleLabel(t)}</span>
+                <span class="muted-text">→ ${escapeHtml(t.position || '—')}${t.assigneeName ? ' / ' + escapeHtml(t.assigneeName) : ''}</span>
+              </div>
+            </div>
+            <div class="actions">
+              ${doneToggleBtn}
+              ${startBtn}
+              ${pauseBtn}
+              <button type="button" class="btn btn-danger btn-small" onclick="removeTask('${t.id}')">Delete</button>
             </div>
           </div>
-          <div class="actions">
-            ${t.status !== 'Done'
-              ? `<button class="btn-secondary" onclick="setStatus('${t.id}','Done')">Done</button>`
-              : `<button class="btn-secondary" onclick="setStatus('${t.id}','Pending')">Reopen</button>`}
-            ${t.status === 'Pending'
-              ? `<button class="btn-secondary" onclick="setStatus('${t.id}','In Progress')">Start</button>`
-              : ''}
-            <button class="btn-danger" onclick="removeTask('${t.id}')">Delete</button>
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[c]));
-    }
-
-    function loadTasks() {
-      google.script.run.withSuccessHandler(tasks => {
-        allTasks = tasks;
-        render();
-      }).getTasks();
-    }
-
-    function setStatus(id, status) {
-      google.script.run.withSuccessHandler(loadTasks).updateTaskStatus(id, status);
-    }
-
+    function setStatus(id, status) { google.script.run.withSuccessHandler(loadTasks).updateTaskStatus(id, status); }
+    function markDone(id) { google.script.run.withSuccessHandler(loadTasks).markOccurrenceDone(id); }
+    function reopenOccurrence(id) { google.script.run.withSuccessHandler(loadTasks).reopenOccurrence(id); }
+    function setActive(id, active) { google.script.run.withSuccessHandler(loadTasks).setTaskActive(id, active); }
     function removeTask(id) {
       if (!confirm('Delete this task?')) return;
       google.script.run.withSuccessHandler(loadTasks).deleteTask(id);
@@ -238,26 +445,95 @@
 
     document.getElementById('taskForm').addEventListener('submit', function (e) {
       e.preventDefault();
+      const category = document.getElementById('category').value;
       const task = {
         title: document.getElementById('title').value.trim(),
         description: document.getElementById('description').value.trim(),
         priority: document.getElementById('priority').value,
+        category: category,
+        weekday: document.getElementById('weekday').value,
+        dayOfMonth: document.getElementById('dayOfMonth').value,
         dueDate: document.getElementById('dueDate').value,
-        assigneeName: document.getElementById('assigneeName').value.trim(),
-        assigneePhone: document.getElementById('assigneePhone').value.trim(),
+        position: document.getElementById('position').value,
+        assigneeName: document.getElementById('assigneeName').value,
       };
       if (!task.title) return;
       google.script.run.withSuccessHandler(() => {
         e.target.reset();
         document.getElementById('priority').value = 'Medium';
+        onCategoryChange();
+        onPositionChange();
         loadTasks();
       }).addTask(task);
     });
 
-    document.getElementById('filterStatus').addEventListener('change', render);
-    document.getElementById('filterPriority').addEventListener('change', render);
+    // ---- team ----
+    function loadPeople() {
+      google.script.run.withSuccessHandler(people => {
+        allPeople = people;
+        renderTeam();
+        onPositionChange();
+      }).getPeople();
+    }
 
-    loadTasks();
+    function renderTeam() {
+      const container = document.getElementById('teamList');
+      container.innerHTML = config.positions.map(pos => {
+        const roster = allPeople.filter(p => p.position === pos);
+        const rows = roster.map(p => `
+          <div class="person-row">
+            <input type="text" value="${escapeHtml(p.name)}" onchange="savePerson('${p.id}', this.value, null)" placeholder="Name">
+            <input type="text" value="${escapeHtml(p.phone)}" onchange="savePerson('${p.id}', null, this.value)" placeholder="62812xxxxxxx">
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+              <input type="checkbox" ${p.active ? 'checked' : ''} onchange="setPersonActive('${p.id}', this.checked)"> Active
+            </label>
+            <button type="button" class="btn btn-danger btn-small" onclick="removePerson('${p.id}')">Delete</button>
+          </div>
+        `).join('') || '<div class="empty">No one added yet.</div>';
+
+        return `
+          <div class="position-group">
+            <h3>${pos}</h3>
+            ${rows}
+            <div class="add-person-row">
+              <input type="text" id="newName-${cssId(pos)}" placeholder="Name">
+              <input type="text" id="newPhone-${cssId(pos)}" placeholder="62812xxxxxxx">
+              <button type="button" class="btn btn-secondary btn-small" onclick="addPersonToPosition('${pos}')">Add</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function cssId(s) { return s.replace(/[^a-zA-Z0-9]/g, ''); }
+
+    function addPersonToPosition(pos) {
+      const nameInput = document.getElementById('newName-' + cssId(pos));
+      const phoneInput = document.getElementById('newPhone-' + cssId(pos));
+      const name = nameInput.value.trim();
+      if (!name) return;
+      google.script.run.withSuccessHandler(() => {
+        nameInput.value = '';
+        phoneInput.value = '';
+        loadPeople();
+      }).addPerson({ position: pos, name: name, phone: phoneInput.value.trim() });
+    }
+
+    function savePerson(id, name, phone) {
+      const patch = {};
+      if (name !== null) patch.name = name;
+      if (phone !== null) patch.phone = phone;
+      google.script.run.withSuccessHandler(loadPeople).updatePerson(id, patch);
+    }
+
+    function setPersonActive(id, active) {
+      google.script.run.withSuccessHandler(loadPeople).updatePerson(id, { active: active });
+    }
+
+    function removePerson(id) {
+      if (!confirm('Remove this person?')) return;
+      google.script.run.withSuccessHandler(loadPeople).deletePerson(id);
+    }
   </script>
 </body>
 </html>
