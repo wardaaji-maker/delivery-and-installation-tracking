@@ -4,6 +4,7 @@
   <base target="_top">
   <style>
     :root {
+      --urgent: #8b1e3f;
       --high: #e5484d;
       --medium: #f5a623;
       --low: #30a46c;
@@ -20,29 +21,54 @@
       background: var(--bg);
       color: var(--ink);
     }
-    .app { max-width: 840px; margin: 0 auto; padding: 16px; }
+    .app { max-width: 900px; margin: 0 auto; padding: 16px; }
     h1 { font-size: 20px; margin: 0 0 4px; }
-    .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
 
-    nav.tabs {
+    .whoami {
       display: flex;
-      gap: 4px;
+      align-items: center;
+      justify-content: space-between;
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 4px;
-      margin-bottom: 16px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .whoami .name { font-weight: 700; }
+    .whoami .pos { color: var(--muted); font-size: 12px; }
+    .whoami button { background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; padding: 16px;
+    }
+    .overlay.hidden { display: none; }
+    .overlay-card {
+      background: #fff; border-radius: 12px; padding: 20px;
+      max-width: 420px; width: 100%; max-height: 80vh; overflow-y: auto;
+    }
+    .overlay-card h2 { font-size: 16px; margin: 0 0 4px; }
+    .overlay-card p { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+    .person-pick-group { margin-bottom: 14px; }
+    .person-pick-group h4 { font-size: 12px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .03em; }
+    .person-pick {
+      display: block; width: 100%; text-align: left;
+      padding: 10px 12px; margin-bottom: 6px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: #fafafa; cursor: pointer; font-size: 14px; font-weight: 600;
+    }
+    .person-pick:hover { background: #eef2ff; border-color: var(--accent); }
+
+    nav.tabs {
+      display: flex; gap: 4px; background: #fff; border: 1px solid var(--border);
+      border-radius: 10px; padding: 4px; margin-bottom: 16px; flex-wrap: wrap;
     }
     nav.tabs button {
-      flex: 1;
-      padding: 9px 10px;
-      border: none;
-      background: transparent;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--muted);
-      cursor: pointer;
+      flex: 1; min-width: 80px; padding: 9px 10px; border: none; background: transparent;
+      border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
     }
     nav.tabs button.active { background: var(--ink); color: #fff; }
 
@@ -50,53 +76,35 @@
     .tabpanel.active { display: block; }
 
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-    .stat {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      text-align: center;
-    }
+    .stat { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
     .stat .n { font-size: 22px; font-weight: 700; }
     .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-    .card {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
     .card h2 { font-size: 15px; margin: 0 0 12px; }
 
     .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
     .chip {
-      padding: 6px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: #fff;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      color: var(--muted);
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+      background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted);
     }
     .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-    .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
     .filters select { width: auto; }
 
     label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
     input, select, textarea {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 14px;
-      font-family: inherit;
+      width: 100%; padding: 8px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 14px; font-family: inherit;
     }
     textarea { resize: vertical; min-height: 44px; }
     form.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     form.grid .full { grid-column: 1 / -1; }
+
+    .weekday-checks { display: flex; gap: 10px; flex-wrap: wrap; }
+    .weekday-checks label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink); margin: 0; }
+    .weekday-checks input { width: auto; }
 
     button.btn { cursor: pointer; border: none; border-radius: 6px; padding: 9px 14px; font-size: 14px; font-weight: 600; }
     .btn-primary { background: var(--ink); color: #fff; }
@@ -105,15 +113,9 @@
     .btn-small { padding: 6px 10px; font-size: 12px; }
 
     .task {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      margin-bottom: 8px;
-      background: #fff;
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+      padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+      margin-bottom: 8px; background: #fff;
     }
     .task.faded { opacity: 0.55; }
     .task-main { flex: 1; min-width: 0; }
@@ -122,6 +124,7 @@
     .task-desc { font-size: 13px; color: #555; margin-top: 2px; white-space: pre-wrap; }
     .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
     .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; }
+    .badge.Urgent { background: var(--urgent); }
     .badge.High { background: var(--high); }
     .badge.Medium { background: var(--medium); }
     .badge.Low { background: var(--low); }
@@ -131,23 +134,29 @@
     .badge.done { background: var(--low); }
     .badge.category { background: var(--accent); }
     .muted-text { font-size: 12px; color: var(--muted); }
+    .report { font-size: 12px; color: #2b6e4a; background: #eefaf1; border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
     .actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 130px; }
     .empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
 
     .position-group { margin-bottom: 18px; }
     .position-group h3 { font-size: 14px; margin: 0 0 8px; }
-    .person-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-    }
+    .person-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
     .person-row:last-child { border-bottom: none; }
     .person-row input[type=text] { flex: 1; }
     .person-row input[type=checkbox] { width: auto; }
     .add-person-row { display: flex; gap: 8px; margin-top: 10px; }
     .add-person-row input { flex: 1; }
+
+    .schedule-days { display: flex; flex-direction: column; gap: 10px; }
+    .day-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .day-card h3 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; }
+    .day-card h3 .d { color: var(--muted); font-weight: 400; }
+    .shift-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+    .shift-row .who { font-weight: 600; min-width: 110px; }
+    .shift-row input[type=text] { flex: 1; }
+    .add-shift-row { display: flex; gap: 6px; margin-top: 8px; }
+    .add-shift-row select { max-width: 150px; }
+    .hint { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -155,9 +164,18 @@
     <h1>📋 Task Manager</h1>
     <p class="subtitle">Showroom Manager → Showroom Manager Partner → Product Consultant</p>
 
+    <div class="whoami">
+      <div>
+        You are: <span class="name" id="whoamiName">—</span>
+        <span class="pos" id="whoamiPos"></span>
+      </div>
+      <button type="button" onclick="showIdentityOverlay()">Switch user</button>
+    </div>
+
     <nav class="tabs">
       <button data-tab="dashboard" class="active">Dashboard</button>
       <button data-tab="newtask">New Task</button>
+      <button data-tab="schedule">Schedule</button>
       <button data-tab="team">Team</button>
     </nav>
 
@@ -165,7 +183,7 @@
       <div class="stats">
         <div class="stat"><div class="n" id="statDueToday">0</div><div class="l">Due today</div></div>
         <div class="stat"><div class="n" id="statOverdue">0</div><div class="l">Overdue</div></div>
-        <div class="stat"><div class="n" id="statHigh">0</div><div class="l">High priority pending</div></div>
+        <div class="stat"><div class="n" id="statHigh">0</div><div class="l">Urgent/High pending</div></div>
       </div>
 
       <div class="card">
@@ -174,6 +192,7 @@
           <select id="filterPosition"><option value="">All positions</option></select>
           <select id="filterPriority">
             <option value="">All priorities</option>
+            <option value="Urgent">Urgent</option>
             <option value="High">High</option>
             <option value="Medium">Medium</option>
             <option value="Low">Low</option>
@@ -200,19 +219,15 @@
           </div>
           <div>
             <label>Priority</label>
-            <select id="priority">
-              <option value="High">High</option>
-              <option value="Medium" selected>Medium</option>
-              <option value="Low">Low</option>
-            </select>
+            <select id="priority"></select>
           </div>
           <div>
             <label>Category</label>
             <select id="category"></select>
           </div>
           <div class="full" id="weeklyField" style="display:none;">
-            <label>Which day of the week</label>
-            <select id="weekday"></select>
+            <label>Which day(s) of the week</label>
+            <div class="weekday-checks" id="weekdayChecks"></div>
           </div>
           <div class="full" id="monthlyField" style="display:none;">
             <label>Which day of the month</label>
@@ -237,6 +252,14 @@
       </div>
     </section>
 
+    <section id="tab-schedule" class="tabpanel">
+      <div class="card">
+        <h2>Showroom schedule — next 7 days</h2>
+        <p class="hint" id="scheduleHint"></p>
+        <div class="schedule-days" id="scheduleDays"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
+
     <section id="tab-team" class="tabpanel">
       <div class="card" id="teamCard">
         <h2>Team</h2>
@@ -245,13 +268,28 @@
     </section>
   </div>
 
+  <div class="overlay hidden" id="identityOverlay">
+    <div class="overlay-card">
+      <h2>Who are you?</h2>
+      <p>Pick your name — this device will remember it, and it's used to attribute task reports and to check schedule-edit permission.</p>
+      <div id="identityList"></div>
+    </div>
+  </div>
+
   <script>
-    let config = { positions: [], categories: [], weekdays: [] };
+    const PERSON_STORAGE_KEY = 'tm_person_id';
+    let config = { positions: [], managerPositions: [], categories: [], priorities: [], weekdays: [] };
     let allTasks = [];
     let allPeople = [];
+    let allSchedule = [];
+    let currentPerson = null;
     let activeCategory = 'All';
 
-    function todayStr() { return new Date().toISOString().slice(0, 10); }
+    // Local-date formatting (not toISOString/UTC) so "today" matches the
+    // device's own timezone instead of potentially being a day off.
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function localDateStr(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+    function todayStr() { return localDateStr(new Date()); }
     function todayWeekdayName() {
       return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
     }
@@ -260,6 +298,9 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[c]));
+    }
+    function isManager(person) {
+      return !!person && config.managerPositions.indexOf(person.position) !== -1;
     }
 
     // ---- tabs ----
@@ -272,9 +313,59 @@
       });
     });
 
+    // ---- identity ----
+    function showIdentityOverlay() {
+      const list = document.getElementById('identityList');
+      list.innerHTML = config.positions.map(pos => {
+        const roster = allPeople.filter(p => p.position === pos && p.active);
+        if (roster.length === 0) return '';
+        return `
+          <div class="person-pick-group">
+            <h4>${pos}</h4>
+            ${roster.map(p => `<button type="button" class="person-pick" onclick="selectIdentity('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
+          </div>
+        `;
+      }).join('') || '<div class="empty">No one in the Team tab yet — add people there first.</div>';
+      document.getElementById('identityOverlay').classList.remove('hidden');
+    }
+
+    function hideIdentityOverlay() {
+      document.getElementById('identityOverlay').classList.add('hidden');
+    }
+
+    function selectIdentity(personId) {
+      const person = allPeople.find(p => p.id === personId);
+      if (!person) return;
+      currentPerson = person;
+      localStorage.setItem(PERSON_STORAGE_KEY, personId);
+      updateWhoAmI();
+      hideIdentityOverlay();
+      renderSchedule();
+    }
+
+    function updateWhoAmI() {
+      document.getElementById('whoamiName').textContent = currentPerson ? currentPerson.name : 'Not selected';
+      document.getElementById('whoamiPos').textContent = currentPerson ? '(' + currentPerson.position + ')' : '';
+    }
+
+    function resolveIdentity() {
+      const savedId = localStorage.getItem(PERSON_STORAGE_KEY);
+      const person = savedId && allPeople.find(p => p.id === savedId && p.active);
+      if (person) {
+        currentPerson = person;
+        updateWhoAmI();
+        hideIdentityOverlay();
+      } else {
+        currentPerson = null;
+        updateWhoAmI();
+        showIdentityOverlay();
+      }
+    }
+
     // ---- bootstrap ----
     google.script.run.withSuccessHandler(cfg => {
       config = cfg;
+
       document.getElementById('categoryChips').innerHTML = ['All'].concat(cfg.categories).map(c =>
         `<button type="button" class="chip ${c === 'All' ? 'active' : ''}" data-cat="${c}">${c}</button>`
       ).join('');
@@ -287,15 +378,24 @@
         });
       });
 
+      document.getElementById('priority').innerHTML = cfg.priorities.map(p => `<option value="${p}" ${p === 'Medium' ? 'selected' : ''}>${p}</option>`).join('');
       document.getElementById('category').innerHTML = cfg.categories.map(c => `<option value="${c}">${c}</option>`).join('');
-      document.getElementById('weekday').innerHTML = cfg.weekdays.map(w => `<option value="${w}">${w}</option>`).join('');
+      document.getElementById('weekdayChecks').innerHTML = cfg.weekdays.map(w =>
+        `<label><input type="checkbox" value="${w}"> ${w}</label>`
+      ).join('');
       document.getElementById('position').innerHTML = cfg.positions.map(p => `<option value="${p}">${p}</option>`).join('');
       document.getElementById('filterPosition').innerHTML += cfg.positions.map(p => `<option value="${p}">${p}</option>`).join('');
       onCategoryChange();
       onPositionChange();
 
-      loadPeople();
-      loadTasks();
+      google.script.run.withSuccessHandler(people => {
+        allPeople = people;
+        resolveIdentity();
+        renderTeam();
+        onPositionChange();
+        loadTasks();
+        loadSchedule();
+      }).getPeople();
     }).getConfig();
 
     document.getElementById('category').addEventListener('change', onCategoryChange);
@@ -339,10 +439,12 @@
         if (t.dueDate === today) return { label: 'Due today', cls: 'today', isDone: false, isDueToday: true, isOverdue: false };
         return { label: 'Upcoming', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
       }
+      const weekdayList = String(t.weekday || '').split(',').map(s => s.trim());
+      const dayOfMonthList = String(t.dayOfMonth || '').split(',').map(s => s.trim());
       const scheduledToday =
         t.category === 'Daily Routine' ||
-        (t.category === 'Weekly' && t.weekday === todayWeekdayName()) ||
-        (t.category === 'Monthly' && String(t.dayOfMonth) === String(todayDayOfMonth()));
+        (t.category === 'Weekly' && weekdayList.indexOf(todayWeekdayName()) !== -1) ||
+        (t.category === 'Monthly' && dayOfMonthList.indexOf(String(todayDayOfMonth())) !== -1);
       const doneToday = t.lastCompletedDate === today;
       if (!t.active) return { label: 'Paused', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
       if (doneToday) return { label: 'Done today', cls: 'done', isDone: true, isDueToday: scheduledToday, isOverdue: false };
@@ -362,7 +464,7 @@
         (showPaused || t.active)
       );
 
-      const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
+      const PRIORITY_ORDER = { Urgent: -1, High: 0, Medium: 1, Low: 2 };
       tasks.sort((a, b) => {
         const oa = occurrence(a), ob = occurrence(b);
         if (oa.isDone !== ob.isDone) return oa.isDone ? 1 : -1;
@@ -371,13 +473,12 @@
         return a.title.localeCompare(b.title);
       });
 
-      // stats (computed over all active tasks, not the filtered view)
       let dueToday = 0, overdue = 0, highPending = 0;
       allTasks.filter(t => t.active).forEach(t => {
         const o = occurrence(t);
         if (o.isDueToday && !o.isDone) dueToday++;
         if (o.isOverdue) overdue++;
-        if (o.isDueToday && !o.isDone && t.priority === 'High') highPending++;
+        if (o.isDueToday && !o.isDone && (t.priority === 'High' || t.priority === 'Urgent')) highPending++;
       });
       document.getElementById('statDueToday').textContent = dueToday;
       document.getElementById('statOverdue').textContent = overdue;
@@ -392,22 +493,18 @@
       list.innerHTML = tasks.map(t => {
         const o = occurrence(t);
         const isRecurring = t.category !== 'One-time';
-        let doneToggleBtn;
-        if (isRecurring) {
-          doneToggleBtn = o.isDone
-            ? `<button type="button" class="btn btn-secondary btn-small" onclick="reopenOccurrence('${t.id}')">Reopen</button>`
-            : `<button type="button" class="btn btn-secondary btn-small" onclick="markDone('${t.id}')">Done today</button>`;
-        } else {
-          doneToggleBtn = t.status !== 'Done'
-            ? `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','Done')">Done</button>`
-            : `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','Pending')">Reopen</button>`;
-        }
+        const doneToggleBtn = o.isDone
+          ? `<button type="button" class="btn btn-secondary btn-small" onclick="reopenTaskFlow('${t.id}')">Reopen</button>`
+          : `<button type="button" class="btn btn-secondary btn-small" onclick="completeTaskFlow('${t.id}')">${isRecurring ? 'Done today' : 'Done'}</button>`;
         const startBtn = (!isRecurring && t.status === 'Pending')
           ? `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','In Progress')">Start</button>` : '';
         const pauseBtn = isRecurring
           ? (t.active
               ? `<button type="button" class="btn btn-secondary btn-small" onclick="setActive('${t.id}',false)">Pause</button>`
               : `<button type="button" class="btn btn-secondary btn-small" onclick="setActive('${t.id}',true)">Resume</button>`)
+          : '';
+        const report = (o.isDone && t.completedBy)
+          ? `<div class="report">✓ Done by ${escapeHtml(t.completedBy)}${t.completionNote ? ': ' + escapeHtml(t.completionNote) : ''}</div>`
           : '';
 
         return `
@@ -422,6 +519,7 @@
                 <span class="muted-text">${scheduleLabel(t)}</span>
                 <span class="muted-text">→ ${escapeHtml(t.position || '—')}${t.assigneeName ? ' / ' + escapeHtml(t.assigneeName) : ''}</span>
               </div>
+              ${report}
             </div>
             <div class="actions">
               ${doneToggleBtn}
@@ -435,8 +533,17 @@
     }
 
     function setStatus(id, status) { google.script.run.withSuccessHandler(loadTasks).updateTaskStatus(id, status); }
-    function markDone(id) { google.script.run.withSuccessHandler(loadTasks).markOccurrenceDone(id); }
-    function reopenOccurrence(id) { google.script.run.withSuccessHandler(loadTasks).reopenOccurrence(id); }
+
+    function completeTaskFlow(id) {
+      if (!currentPerson) { showIdentityOverlay(); return; }
+      const note = prompt('Quick report (optional) — what did you do?') || '';
+      google.script.run.withSuccessHandler(loadTasks).completeTask(id, currentPerson.id, note);
+    }
+
+    function reopenTaskFlow(id) {
+      google.script.run.withSuccessHandler(loadTasks).reopenTask(id);
+    }
+
     function setActive(id, active) { google.script.run.withSuccessHandler(loadTasks).setTaskActive(id, active); }
     function removeTask(id) {
       if (!confirm('Delete this task?')) return;
@@ -446,36 +553,119 @@
     document.getElementById('taskForm').addEventListener('submit', function (e) {
       e.preventDefault();
       const category = document.getElementById('category').value;
+      const weekday = Array.from(document.querySelectorAll('#weekdayChecks input:checked')).map(el => el.value);
       const task = {
         title: document.getElementById('title').value.trim(),
         description: document.getElementById('description').value.trim(),
         priority: document.getElementById('priority').value,
         category: category,
-        weekday: document.getElementById('weekday').value,
+        weekday: weekday,
         dayOfMonth: document.getElementById('dayOfMonth').value,
         dueDate: document.getElementById('dueDate').value,
         position: document.getElementById('position').value,
         assigneeName: document.getElementById('assigneeName').value,
       };
       if (!task.title) return;
+      if (category === 'Weekly' && weekday.length === 0) { alert('Pick at least one day of the week.'); return; }
       google.script.run.withSuccessHandler(() => {
         e.target.reset();
         document.getElementById('priority').value = 'Medium';
+        document.querySelectorAll('#weekdayChecks input').forEach(el => el.checked = false);
         onCategoryChange();
         onPositionChange();
         loadTasks();
       }).addTask(task);
     });
 
-    // ---- team ----
-    function loadPeople() {
-      google.script.run.withSuccessHandler(people => {
-        allPeople = people;
-        renderTeam();
-        onPositionChange();
-      }).getPeople();
+    // ---- schedule ----
+    function loadSchedule() {
+      const start = todayStr();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 6);
+      const end = localDateStr(endDate);
+      google.script.run.withSuccessHandler(entries => {
+        allSchedule = entries;
+        renderSchedule();
+      }).getSchedule(start, end);
     }
 
+    function renderSchedule() {
+      const hint = document.getElementById('scheduleHint');
+      const manager = isManager(currentPerson);
+      hint.textContent = manager
+        ? 'You can add, edit, or remove shifts below.'
+        : 'Read-only — ask a Showroom Manager or Partner to change the schedule.';
+
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        days.push(localDateStr(d));
+      }
+      const weekdayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const activeRoster = allPeople.filter(p => p.active);
+
+      document.getElementById('scheduleDays').innerHTML = days.map(date => {
+        const d = new Date(date + 'T00:00:00');
+        const label = weekdayNames[d.getDay()] + (date === todayStr() ? ' (Today)' : '');
+        const entries = allSchedule.filter(e => e.date === date);
+        const rows = entries.map(e => `
+          <div class="shift-row">
+            <span class="who">${escapeHtml(e.staffName)}</span>
+            <input type="text" value="${escapeHtml(e.shiftNote)}" placeholder="shift note (optional)"
+              ${manager ? `onchange="saveScheduleNote('${e.id}', this.value)"` : 'disabled'}>
+            ${manager ? `<button type="button" class="btn btn-danger btn-small" onclick="removeScheduleEntry('${e.id}')">✕</button>` : ''}
+          </div>
+        `).join('') || '<div class="muted-text">No one scheduled.</div>';
+
+        const addRow = manager ? `
+          <div class="add-shift-row">
+            <select id="addStaff-${date}">
+              ${activeRoster.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('') || '<option value="">No people yet</option>'}
+            </select>
+            <input type="text" id="addNote-${date}" placeholder="shift note (optional)">
+            <button type="button" class="btn btn-secondary btn-small" onclick="addScheduleRow('${date}')">Add</button>
+          </div>
+        ` : '';
+
+        return `
+          <div class="day-card">
+            <h3><span>${label}</span><span class="d">${date}</span></h3>
+            ${rows}
+            ${addRow}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function addScheduleRow(date) {
+      if (!currentPerson) { showIdentityOverlay(); return; }
+      const staffSelect = document.getElementById('addStaff-' + date);
+      const noteInput = document.getElementById('addNote-' + date);
+      if (!staffSelect.value) return;
+      google.script.run
+        .withSuccessHandler(loadSchedule)
+        .withFailureHandler(err => alert(err.message || err))
+        .addScheduleEntry(currentPerson.id, { date: date, staffName: staffSelect.value, shiftNote: noteInput.value.trim() });
+    }
+
+    function saveScheduleNote(id, shiftNote) {
+      if (!currentPerson) { showIdentityOverlay(); return; }
+      google.script.run
+        .withFailureHandler(err => alert(err.message || err))
+        .updateScheduleEntry(currentPerson.id, id, { shiftNote: shiftNote });
+    }
+
+    function removeScheduleEntry(id) {
+      if (!currentPerson) { showIdentityOverlay(); return; }
+      if (!confirm('Remove this shift?')) return;
+      google.script.run
+        .withSuccessHandler(loadSchedule)
+        .withFailureHandler(err => alert(err.message || err))
+        .deleteScheduleEntry(currentPerson.id, id);
+    }
+
+    // ---- team ----
     function renderTeam() {
       const container = document.getElementById('teamList');
       container.innerHTML = config.positions.map(pos => {
@@ -517,6 +707,20 @@
         phoneInput.value = '';
         loadPeople();
       }).addPerson({ position: pos, name: name, phone: phoneInput.value.trim() });
+    }
+
+    function loadPeople() {
+      google.script.run.withSuccessHandler(people => {
+        allPeople = people;
+        if (currentPerson) {
+          const refreshed = allPeople.find(p => p.id === currentPerson.id);
+          currentPerson = refreshed || null;
+          updateWhoAmI();
+        }
+        renderTeam();
+        onPositionChange();
+        renderSchedule();
+      }).getPeople();
     }
 
     function savePerson(id, name, phone) {

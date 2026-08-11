@@ -1,56 +1,62 @@
 /**
  * Task Manager — Google Apps Script + Fonnte
  *
- * Storage: a "Tasks" sheet and a "People" sheet in the bound Google Sheet.
+ * Storage: "Tasks", "People", and "Schedule" sheets in the bound Google Sheet.
  * Reminders: sent via the Fonnte WhatsApp API (https://fonnte.com).
+ *
+ * Identity: there's no Google login gate — on first visit each person picks
+ * their name from the People roster (remembered on that device). That's only
+ * a UI convenience; every server action that matters (editing the showroom
+ * schedule) re-checks the caller's position server-side via requireManager(),
+ * so a spoofed personId still can't bypass the Manager/Partner-only rule.
  *
  * Script Properties (Project Settings → Script Properties):
  *   FONNTE_TOKEN      - your Fonnte device token (required to send WhatsApp reminders)
  *   REMINDER_TARGETS  - comma-separated list of WhatsApp numbers and/or group
- *                       IDs that get the daily summary, e.g.
+ *                       IDs that get the daily task summary, e.g.
  *                       "628123456789,120363012345678901@g.us"
  *                       (find a group's ID in the Fonnte dashboard's device
  *                       group list, or from an inbound webhook payload).
+ *   SCHEDULE_TARGETS  - optional; same format as REMINDER_TARGETS, for where
+ *                       the daily showroom schedule post goes. Falls back to
+ *                       REMINDER_TARGETS if not set.
  */
 
 const TASKS_SHEET_NAME = 'Tasks';
 const PEOPLE_SHEET_NAME = 'People';
+const SCHEDULE_SHEET_NAME = 'Schedule';
 const FONNTE_API_URL = 'https://api.fonnte.com/send';
 
 const TASKS_HEADERS = [
   'ID', 'Title', 'Description', 'Priority', 'Category', 'Weekday',
   'DayOfMonth', 'DueDate', 'Position', 'AssigneeName', 'Active',
-  'Status', 'LastCompletedDate', 'CreatedAt',
+  'Status', 'LastCompletedDate', 'CreatedAt', 'CompletedBy', 'CompletionNote',
 ];
 const PEOPLE_HEADERS = ['ID', 'Position', 'Name', 'Phone', 'Active', 'CreatedAt'];
+const SCHEDULE_HEADERS = ['ID', 'Date', 'StaffName', 'ShiftNote', 'CreatedBy', 'CreatedAt'];
 
 const POSITIONS = ['Showroom Manager', 'Showroom Manager Partner', 'Product Consultant'];
+const MANAGER_POSITIONS = ['Showroom Manager', 'Showroom Manager Partner'];
 const CATEGORIES = ['Daily Routine', 'Weekly', 'Monthly', 'One-time'];
+const PRIORITIES = ['Urgent', 'High', 'Medium', 'Low'];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
-const PRIORITY_EMOJI = { High: '🔴', Medium: '🟡', Low: '🟢' };
+const PRIORITY_ORDER = { Urgent: -1, High: 0, Medium: 1, Low: 2 };
+const PRIORITY_EMOJI = { Urgent: '🚨', High: '🔴', Medium: '🟡', Low: '🟢' };
 
-function getTasksSheet() {
+function getOrCreateSheet(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(TASKS_SHEET_NAME);
+  let sheet = ss.getSheetByName(name);
   if (!sheet) {
-    sheet = ss.insertSheet(TASKS_SHEET_NAME);
-    sheet.appendRow(TASKS_HEADERS);
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
     sheet.setFrozenRows(1);
   }
   return sheet;
 }
 
-function getPeopleSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(PEOPLE_SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(PEOPLE_SHEET_NAME);
-    sheet.appendRow(PEOPLE_HEADERS);
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
-}
+function getTasksSheet() { return getOrCreateSheet(TASKS_SHEET_NAME, TASKS_HEADERS); }
+function getPeopleSheet() { return getOrCreateSheet(PEOPLE_SHEET_NAME, PEOPLE_HEADERS); }
+function getScheduleSheet() { return getOrCreateSheet(SCHEDULE_SHEET_NAME, SCHEDULE_HEADERS); }
 
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -66,7 +72,13 @@ function include(filename) {
 
 /** Static lookup data the UI needs to build forms/dropdowns. */
 function getConfig() {
-  return { positions: POSITIONS, categories: CATEGORIES, weekdays: WEEKDAYS };
+  return {
+    positions: POSITIONS,
+    managerPositions: MANAGER_POSITIONS,
+    categories: CATEGORIES,
+    priorities: PRIORITIES,
+    weekdays: WEEKDAYS,
+  };
 }
 
 function findRowById(sheet, id) {
@@ -93,6 +105,19 @@ function getPeople() {
       phone: row[3],
       active: row[4] !== false,
     }));
+}
+
+function getPersonById(id) {
+  return getPeople().find((p) => p.id === id) || null;
+}
+
+/** Throws unless `personId` belongs to an active Showroom Manager / Partner. */
+function requireManager(personId) {
+  const person = getPersonById(personId);
+  if (!person || !person.active || MANAGER_POSITIONS.indexOf(person.position) === -1) {
+    throw new Error('Only a Showroom Manager or Showroom Manager Partner can edit the schedule.');
+  }
+  return person;
 }
 
 /** `person` = {position, name, phone} */
@@ -123,6 +148,15 @@ function deletePerson(id) {
   return true;
 }
 
+function groupPeopleByPosition(people) {
+  const byPosition = {};
+  people.forEach((p) => {
+    if (!byPosition[p.position]) byPosition[p.position] = [];
+    byPosition[p.position].push(p);
+  });
+  return byPosition;
+}
+
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
@@ -149,28 +183,34 @@ function getTasks() {
       status: row[11],
       lastCompletedDate: row[12] ? Utilities.formatDate(new Date(row[12]), tz, 'yyyy-MM-dd') : '',
       createdAt: row[13] ? Utilities.formatDate(new Date(row[13]), tz, 'yyyy-MM-dd HH:mm') : '',
+      completedBy: row[14],
+      completionNote: row[15],
     }));
 }
 
 /**
  * Creates a task. `task` = {title, description, priority, category, weekday,
- * dayOfMonth, dueDate, position, assigneeName}. Which of weekday/dayOfMonth/
- * dueDate is used depends on category (Weekly/Monthly/One-time); Daily
- * Routine uses none of them.
+ * dayOfMonth, dueDate, position, assigneeName}. `weekday` (Weekly) and
+ * `dayOfMonth` (Monthly) may be arrays for multi-day recurrence, e.g.
+ * weekday: ["Monday", "Friday"]. Daily Routine uses none of these.
+ * Urgent-priority tasks get an immediate WhatsApp ping on top of the daily run.
  */
 function addTask(task) {
   if (!task || !task.title) throw new Error('Title is required');
   if (CATEGORIES.indexOf(task.category) === -1) throw new Error('Invalid category');
   const sheet = getTasksSheet();
   const id = Utilities.getUuid();
+  const priority = PRIORITIES.indexOf(task.priority) === -1 ? 'Medium' : task.priority;
+  const weekday = Array.isArray(task.weekday) ? task.weekday.join(',') : (task.weekday || '');
+  const dayOfMonth = Array.isArray(task.dayOfMonth) ? task.dayOfMonth.join(',') : (task.dayOfMonth || '');
   sheet.appendRow([
     id,
     task.title,
     task.description || '',
-    task.priority || 'Medium',
+    priority,
     task.category,
-    task.category === 'Weekly' ? (task.weekday || '') : '',
-    task.category === 'Monthly' ? (task.dayOfMonth || '') : '',
+    task.category === 'Weekly' ? weekday : '',
+    task.category === 'Monthly' ? dayOfMonth : '',
     task.category === 'One-time' ? (task.dueDate || '') : '',
     task.position || '',
     task.assigneeName || 'All',
@@ -178,11 +218,20 @@ function addTask(task) {
     'Pending',
     '',
     new Date(),
+    '',
+    '',
   ]);
+  if (priority === 'Urgent') {
+    try {
+      notifyTaskNow(id, 'URGENT');
+    } catch (err) {
+      Logger.log('Urgent notification failed for task %s: %s', id, err);
+    }
+  }
   return id;
 }
 
-/** For One-time tasks: Pending / In Progress / Done. */
+/** Generic status setter — used for the one-time "Start" (In Progress) action. */
 function updateTaskStatus(id, status) {
   const sheet = getTasksSheet();
   const row = findRowById(sheet, id);
@@ -191,21 +240,35 @@ function updateTaskStatus(id, status) {
   return true;
 }
 
-/** For recurring tasks (Daily Routine/Weekly/Monthly): marks today's occurrence done. */
-function markOccurrenceDone(id) {
+/**
+ * Marks a task's current occurrence done and records who did it — the
+ * "update the report" step every assignee is expected to do once a task is
+ * finished. Works for both one-time tasks (sets Status=Done) and recurring
+ * ones (stamps LastCompletedDate, which auto-resets the next scheduled day).
+ */
+function completeTask(id, personId, note) {
   const sheet = getTasksSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
+  const category = sheet.getRange(row, 5).getValue();
+  const person = getPersonById(personId);
+  if (category === 'One-time') sheet.getRange(row, 12).setValue('Done');
   sheet.getRange(row, 13).setValue(new Date());
+  sheet.getRange(row, 15).setValue(person ? person.name : '');
+  sheet.getRange(row, 16).setValue(note || '');
   return true;
 }
 
-/** Clears today's completion so the recurring task shows as pending again. */
-function reopenOccurrence(id) {
+/** Reopens a task: clears its completion (and, for one-time tasks, resets Status to Pending). */
+function reopenTask(id) {
   const sheet = getTasksSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
+  const category = sheet.getRange(row, 5).getValue();
+  if (category === 'One-time') sheet.getRange(row, 12).setValue('Pending');
   sheet.getRange(row, 13).setValue('');
+  sheet.getRange(row, 15).setValue('');
+  sheet.getRange(row, 16).setValue('');
   return true;
 }
 
@@ -220,6 +283,59 @@ function setTaskActive(id, active) {
 
 function deleteTask(id) {
   const sheet = getTasksSheet();
+  const row = findRowById(sheet, id);
+  if (row === -1) return false;
+  sheet.deleteRow(row);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Showroom schedule (Manager / Partner only to edit)
+// ---------------------------------------------------------------------------
+
+/** Entries with Date in [startDate, endDate], inclusive, both "yyyy-MM-dd". */
+function getSchedule(startDate, endDate) {
+  const sheet = getScheduleSheet();
+  const data = sheet.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  return data.slice(1)
+    .filter((row) => row[0])
+    .map((row) => ({
+      id: row[0],
+      date: row[1] ? Utilities.formatDate(new Date(row[1]), tz, 'yyyy-MM-dd') : '',
+      staffName: row[2],
+      shiftNote: row[3],
+      createdBy: row[4],
+    }))
+    .filter((entry) => entry.date >= startDate && entry.date <= endDate)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.staffName.localeCompare(b.staffName));
+}
+
+/** `entry` = {date, staffName, shiftNote}. Manager/Partner only. */
+function addScheduleEntry(personId, entry) {
+  const person = requireManager(personId);
+  if (!entry || !entry.date || !entry.staffName) throw new Error('Date and staff name are required');
+  const sheet = getScheduleSheet();
+  const id = Utilities.getUuid();
+  sheet.appendRow([id, entry.date, entry.staffName, entry.shiftNote || '', person.name, new Date()]);
+  return id;
+}
+
+/** `patch` = {date?, staffName?, shiftNote?}. Manager/Partner only. */
+function updateScheduleEntry(personId, id, patch) {
+  requireManager(personId);
+  const sheet = getScheduleSheet();
+  const row = findRowById(sheet, id);
+  if (row === -1) return false;
+  if (patch.date !== undefined) sheet.getRange(row, 2).setValue(patch.date);
+  if (patch.staffName !== undefined) sheet.getRange(row, 3).setValue(patch.staffName);
+  if (patch.shiftNote !== undefined) sheet.getRange(row, 4).setValue(patch.shiftNote);
+  return true;
+}
+
+function deleteScheduleEntry(personId, id) {
+  requireManager(personId);
+  const sheet = getScheduleSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
   sheet.deleteRow(row);
@@ -260,10 +376,27 @@ function resolveRecipients(task, peopleByPosition) {
 
 function isScheduledToday(task, today, todayWeekday, todayDayOfMonth) {
   if (task.category === 'Daily Routine') return true;
-  if (task.category === 'Weekly') return task.weekday === todayWeekday;
-  if (task.category === 'Monthly') return String(task.dayOfMonth) === String(todayDayOfMonth);
+  if (task.category === 'Weekly') {
+    return String(task.weekday || '').split(',').map((s) => s.trim()).indexOf(todayWeekday) !== -1;
+  }
+  if (task.category === 'Monthly') {
+    return String(task.dayOfMonth || '').split(',').map((s) => s.trim()).indexOf(String(todayDayOfMonth)) !== -1;
+  }
   if (task.category === 'One-time') return !!task.dueDate && task.dueDate <= today;
   return false;
+}
+
+/** Sends an immediate WhatsApp ping for one task right now (used for Urgent tasks on creation). */
+function notifyTaskNow(taskId, label) {
+  const task = getTasks().find((t) => t.id === taskId);
+  if (!task) return;
+  const peopleByPosition = groupPeopleByPosition(getPeople());
+  const recipients = resolveRecipients(task, peopleByPosition);
+  if (recipients.length === 0) return;
+  const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
+  const message = `${emoji} [${label}] ${task.title}\nPriority: ${task.priority}\nAssigned: ${task.assigneeName}` +
+    (task.description ? `\n${task.description}` : '');
+  sendFonnteMessage(recipients.join(','), message);
 }
 
 /**
@@ -280,13 +413,7 @@ function sendDailyReminders() {
   const todayWeekday = Utilities.formatDate(now, tz, 'EEEE');
   const todayDayOfMonth = Utilities.formatDate(now, tz, 'd');
   const reminderTargets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
-
-  const people = getPeople();
-  const peopleByPosition = {};
-  people.forEach((p) => {
-    if (!peopleByPosition[p.position]) peopleByPosition[p.position] = [];
-    peopleByPosition[p.position].push(p);
-  });
+  const peopleByPosition = groupPeopleByPosition(getPeople());
 
   const due = tasks.filter((task) => {
     if (!isScheduledToday(task, today, todayWeekday, todayDayOfMonth)) return false;
@@ -332,15 +459,49 @@ function sendDailyReminders() {
   }
 }
 
-/** Run once (from the Apps Script editor) to schedule the 08:00 daily reminder. */
+/** Posts today's showroom schedule to SCHEDULE_TARGETS (falls back to REMINDER_TARGETS). Skips silently if nothing's scheduled today. */
+function postDailySchedule() {
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const entries = getSchedule(today, today);
+  if (entries.length === 0) return;
+
+  const props = PropertiesService.getScriptProperties();
+  const targets = props.getProperty('SCHEDULE_TARGETS') || props.getProperty('REMINDER_TARGETS');
+  if (!targets) return;
+
+  const lines = entries.map((e) => `• ${e.staffName}` + (e.shiftNote ? ` — ${e.shiftNote}` : ''));
+  const message = `🗓️ Today's Showroom Schedule (${today}):\n\n${lines.join('\n')}`;
+  try {
+    sendFonnteMessage(targets, message);
+  } catch (err) {
+    Logger.log('Schedule post failed: %s', err);
+  }
+}
+
+/** Runs everything the daily trigger is responsible for. One failure doesn't block the other. */
+function runDailyAutomation() {
+  try {
+    sendDailyReminders();
+  } catch (err) {
+    Logger.log('sendDailyReminders failed: %s', err);
+  }
+  try {
+    postDailySchedule();
+  } catch (err) {
+    Logger.log('postDailySchedule failed: %s', err);
+  }
+}
+
+/** Run once (from the Apps Script editor) to schedule the 08:00 daily run. */
 function createDailyTrigger() {
   deleteDailyTriggers();
-  ScriptApp.newTrigger('sendDailyReminders').timeBased().everyDays(1).atHour(8).create();
+  ScriptApp.newTrigger('runDailyAutomation').timeBased().everyDays(1).atHour(8).create();
 }
 
 function deleteDailyTriggers() {
   ScriptApp.getProjectTriggers().forEach((trigger) => {
-    if (trigger.getHandlerFunction() === 'sendDailyReminders') {
+    if (trigger.getHandlerFunction() === 'runDailyAutomation') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
