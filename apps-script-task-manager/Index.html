@@ -307,7 +307,7 @@
 
   <script>
     const PERSON_STORAGE_KEY = 'tm_person_id';
-    let config = { positions: [], managerPositions: [], categories: [], priorities: [], weekdays: [] };
+    let config = { positions: [], managerPositions: [], teamAdminPositions: [], categories: [], priorities: [], weekdays: [] };
     let allTasks = [];
     let allPeople = [];
     let allSchedule = [];
@@ -330,6 +330,10 @@
     }
     function isManager(person) {
       return !!person && config.managerPositions.indexOf(person.position) !== -1;
+    }
+    /** Narrower than isManager() — Team roster access is Showroom Manager only, not Partner. */
+    function isTeamAdmin(person) {
+      return !!person && config.teamAdminPositions.indexOf(person.position) !== -1;
     }
 
     // ---- tabs ----
@@ -864,13 +868,14 @@
     }
 
     // ---- team ----
-    /** No Manager/Partner exists yet -> Team stays open so the first one can be created. */
-    function isBootstrapping() {
-      return !allPeople.some(p => isManager(p) && p.active);
+    /** No active Showroom Manager exists yet -> Team stays open so the first one can be created. */
+    function isTeamBootstrapping() {
+      return !allPeople.some(p => isTeamAdmin(p) && p.active);
     }
 
+    /** Team roster is Showroom Manager only — Partner has schedule access but not this. */
     function canEditTeam() {
-      return isBootstrapping() || isManager(currentPerson);
+      return isTeamBootstrapping() || isTeamAdmin(currentPerson);
     }
 
     function requesterId() { return currentPerson ? currentPerson.id : null; }
@@ -879,8 +884,8 @@
       const container = document.getElementById('teamList');
       const editable = canEditTeam();
       const hint = editable
-        ? (isBootstrapping() ? 'No Manager/Partner yet — Team is open until the first one is added.' : 'You can add, edit, or remove people below.')
-        : 'Read-only — ask a Showroom Manager or Partner to update the team.';
+        ? (isTeamBootstrapping() ? 'No Showroom Manager yet — Team is open until the first one is added.' : 'You can add, edit, or remove people below.')
+        : 'Read-only — only a Showroom Manager can update the team.';
 
       container.innerHTML = `<p class="hint">${hint}</p>` + config.positions.map(pos => {
         const roster = allPeople.filter(p => p.position === pos);

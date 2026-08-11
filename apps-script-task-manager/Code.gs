@@ -6,16 +6,19 @@
  *
  * Identity: there's no Google login gate — on first visit each person picks
  * their name from the People roster (remembered on that device). Every
- * server action that matters (editing the schedule, shift types, or the
- * Team roster) re-checks the caller's position server-side via
- * requireManager()/requireManagerOrBootstrap(), so a spoofed personId can't
- * bypass the Manager/Partner-only rule on its own. On top of that, a Manager
- * or Partner can set a PIN on their own identity (Team tab / "Set PIN" in
- * the header) — once set, picking that identity requires the PIN, so a
- * Product Consultant can no longer just tap a manager's name to "become"
- * them. PINs are stored in plain text in the People sheet (same trust
- * boundary as the Sheet itself), so this is a real access-control step up
- * from "anyone can pick anyone," not a cryptographically hardened login.
+ * server action that matters re-checks the caller's position server-side,
+ * so a spoofed personId can't bypass permissions on its own:
+ *   - Schedule + shift types: Showroom Manager OR Partner (requireManager()).
+ *   - Team roster (add/edit/delete people, reset PINs): Showroom Manager
+ *     ONLY (requireTeamAdmin()) — Partner can edit the schedule but not
+ *     the org roster.
+ * On top of that, a Manager or Partner can set a PIN on their own identity
+ * ("Secure with a PIN" in the header) — once set, picking that identity
+ * requires the PIN, so a Product Consultant can no longer just tap a
+ * manager's name to "become" them. PINs are stored in plain text in the
+ * People sheet (same trust boundary as the Sheet itself), so this is a real
+ * access-control step up from "anyone can pick anyone," not a
+ * cryptographically hardened login.
  *
  * Script Properties (Project Settings → Script Properties):
  *   FONNTE_TOKEN      - your Fonnte device token (required to send WhatsApp reminders)
@@ -54,6 +57,8 @@ const DEFAULT_SHIFT_TYPES = [
 
 const POSITIONS = ['Showroom Manager', 'Showroom Manager Partner', 'Product Consultant'];
 const MANAGER_POSITIONS = ['Showroom Manager', 'Showroom Manager Partner'];
+/** Team roster management is narrower than schedule access — Manager only, not Partner. */
+const TEAM_ADMIN_POSITIONS = ['Showroom Manager'];
 const CATEGORIES = ['Daily Routine', 'Weekly', 'Monthly', 'One-time'];
 const PRIORITIES = ['Urgent', 'High', 'Medium', 'Low'];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -124,6 +129,7 @@ function getConfig() {
   return {
     positions: POSITIONS,
     managerPositions: MANAGER_POSITIONS,
+    teamAdminPositions: TEAM_ADMIN_POSITIONS,
     categories: CATEGORIES,
     priorities: PRIORITIES,
     weekdays: WEEKDAYS,
@@ -162,12 +168,7 @@ function getPersonById(id) {
   return getPeople().find((p) => p.id === id) || null;
 }
 
-/** True until at least one active Manager/Partner exists — lets the very first one be created without a chicken-and-egg lockout. */
-function isBootstrapping() {
-  return getPeople().every((p) => MANAGER_POSITIONS.indexOf(p.position) === -1 || !p.active);
-}
-
-/** Throws unless `personId` belongs to an active Showroom Manager / Partner. */
+/** Throws unless `personId` belongs to an active Showroom Manager / Partner. Used for schedule + shift types. */
 function requireManager(personId) {
   const person = getPersonById(personId);
   if (!person || !person.active || MANAGER_POSITIONS.indexOf(person.position) === -1) {
@@ -176,15 +177,29 @@ function requireManager(personId) {
   return person;
 }
 
-/** Same as requireManager(), but allows anyone through while no Manager/Partner exists yet. */
-function requireManagerOrBootstrap(personId) {
-  if (isBootstrapping()) return null;
-  return requireManager(personId);
+/** True until at least one active Showroom Manager exists — lets the very first one be created without a chicken-and-egg lockout. */
+function isTeamBootstrapping() {
+  return getPeople().every((p) => TEAM_ADMIN_POSITIONS.indexOf(p.position) === -1 || !p.active);
 }
 
-/** `person` = {position, name, phone}. Manager/Partner only, except during initial bootstrap. */
+/** Throws unless `personId` belongs to an active Showroom Manager. Team roster is narrower than schedule access — Partner is not enough. */
+function requireTeamAdmin(personId) {
+  const person = getPersonById(personId);
+  if (!person || !person.active || TEAM_ADMIN_POSITIONS.indexOf(person.position) === -1) {
+    throw new Error('Only a Showroom Manager can manage the Team.');
+  }
+  return person;
+}
+
+/** Same as requireTeamAdmin(), but allows anyone through while no Showroom Manager exists yet. */
+function requireTeamAdminOrBootstrap(personId) {
+  if (isTeamBootstrapping()) return null;
+  return requireTeamAdmin(personId);
+}
+
+/** `person` = {position, name, phone}. Showroom Manager only, except during initial bootstrap. */
 function addPerson(requesterId, person) {
-  requireManagerOrBootstrap(requesterId);
+  requireTeamAdminOrBootstrap(requesterId);
   if (!person || !person.name || !person.position) throw new Error('Name and position are required');
   const sheet = getPeopleSheet();
   const id = Utilities.getUuid();
@@ -192,9 +207,9 @@ function addPerson(requesterId, person) {
   return id;
 }
 
-/** `patch` = {name?, phone?, active?}. Manager/Partner only, except during initial bootstrap. */
+/** `patch` = {name?, phone?, active?}. Showroom Manager only, except during initial bootstrap. */
 function updatePerson(requesterId, id, patch) {
-  requireManagerOrBootstrap(requesterId);
+  requireTeamAdminOrBootstrap(requesterId);
   const sheet = getPeopleSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
@@ -205,7 +220,7 @@ function updatePerson(requesterId, id, patch) {
 }
 
 function deletePerson(requesterId, id) {
-  requireManagerOrBootstrap(requesterId);
+  requireTeamAdminOrBootstrap(requesterId);
   const sheet = getPeopleSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
@@ -222,9 +237,9 @@ function setPersonPin(personId, pin) {
   return true;
 }
 
-/** Lets a Manager/Partner clear someone else's forgotten PIN. */
+/** Lets a Showroom Manager clear someone else's forgotten PIN — same gate as the rest of Team. */
 function resetPersonPin(requesterId, targetId) {
-  requireManager(requesterId);
+  requireTeamAdminOrBootstrap(requesterId);
   const sheet = getPeopleSheet();
   const row = findRowById(sheet, targetId);
   if (row === -1) return false;

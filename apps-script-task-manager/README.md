@@ -21,30 +21,35 @@ Two independent layers back this up, because "just pick any name" is
 exploitable on its own — a Product Consultant could otherwise pick
 "Showroom Manager" and edit the schedule or the team:
 
-1. **Server-side position checks.** Editing the schedule, managing shift
-   types, or managing the Team roster all call `requireManager()` /
-   `requireManagerOrBootstrap()` in `Code.gs`, which looks up the caller's
-   position *fresh from the `People` sheet* on every call and rejects it
-   if they're not an active Showroom Manager or Partner — regardless of
-   what the browser sends. This alone stops any *other* action from being
-   silently allowed, but by itself it doesn't stop someone from picking a
-   manager's name in the first place.
+1. **Server-side position checks, at two different levels.** `Code.gs`
+   looks up the caller's position *fresh from the `People` sheet* on
+   every relevant call, regardless of what the browser sends:
+   - Editing the schedule or managing shift types: `requireManager()` —
+     Showroom Manager **or** Partner.
+   - Managing the Team roster (add/edit/delete people, reset PINs):
+     `requireTeamAdmin()` — Showroom Manager **only**. A Partner can run
+     the schedule day-to-day but can't touch who's in the org or reset
+     someone's PIN.
+   This alone stops any of those actions from being silently allowed to
+   the wrong position, but by itself it doesn't stop someone from
+   picking a manager's *name* in the first place.
 2. **PINs on Manager/Partner identities close that gap.** From the header
-   bar, a Manager/Partner can tap **🔒 Secure with a PIN** to set one on
-   their own picked identity. Once set, picking that name (in the
+   bar, a Manager or Partner can tap **🔒 Secure with a PIN** to set one
+   on their own picked identity. Once set, picking that name (in the
    identity overlay, or via **Switch user**) requires the PIN — verified
    server-side (`verifyPin`), which never sends the actual PIN value to
    the browser. A Product Consultant with no PIN still can't be told the
    Manager's PIN, so they can no longer just tap the name to "become" the
-   manager. If a PIN is forgotten, any *other* logged-in Manager/Partner
-   can clear it from the Team tab ("Reset PIN").
+   manager. If a PIN is forgotten, the Showroom Manager can clear it from
+   the Team tab ("Reset PIN").
 
-**Team roster management itself is Manager/Partner-only**, with one
-exception: while no active Manager or Partner exists yet (a brand-new
-Sheet), Team stays open to anyone so the very first Manager can be
-created — this is `isBootstrapping()` in `Code.gs`. The moment one active
-Manager/Partner exists, that exception closes and only Manager/Partner
-identities can add, edit, or remove people (or reset PINs) from then on.
+**Team roster management is Showroom-Manager-only** — narrower than
+schedule access — with one bootstrap exception: while no active Showroom
+Manager exists yet (a brand-new Sheet), Team stays open to anyone so the
+very first Manager can be created — this is `isTeamBootstrapping()` in
+`Code.gs`. The moment one active Showroom Manager exists, that exception
+closes and only that position can add, edit, or remove people (or reset
+PINs) from then on.
 
 This is still not cryptographically hardened — PINs are stored in plain
 text in the `People` sheet (same trust boundary as the Sheet itself: if
@@ -59,7 +64,7 @@ on who can complete a task.
 
 ## What it does
 
-- **Team roster** (Team tab, Manager/Partner-only — see Identity below) —
+- **Team roster** (Team tab, Showroom-Manager-only — see Identity below) —
   three fixed positions, top to bottom: Showroom Manager → Showroom
   Manager Partner → Product Consultant. Add, rename, re-phone,
   deactivate, or delete specific people under each position at any
