@@ -163,6 +163,13 @@
     table.schedule-grid th.today, table.schedule-grid td.today-col { background: #eef2ff; }
     table.schedule-grid select { border: none; text-align: center; font-size: 12px; font-weight: 600; padding: 5px 2px; border-radius: 4px; }
     table.schedule-grid .cell-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: 600; min-width: 40px; }
+
+    .shift-type-manager { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .shift-type-manager h3 { font-size: 13px; margin: 0 0 8px; }
+    .shift-type-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+    .shift-type-row input[type=text] { flex: 1; }
+    .shift-type-row input[type=color] { width: 34px; padding: 2px; height: 30px; flex: none; }
+    .shift-type-row .code-input { max-width: 80px; flex: none; text-transform: uppercase; }
   </style>
 </head>
 <body>
@@ -175,7 +182,10 @@
         You are: <span class="name" id="whoamiName">—</span>
         <span class="pos" id="whoamiPos"></span>
       </div>
-      <button type="button" onclick="showIdentityOverlay()">Switch user</button>
+      <div>
+        <button type="button" id="whoamiPinBtn" style="display:none;" onclick="setMyPin()"></button>
+        <button type="button" onclick="showIdentityOverlay()">Switch user</button>
+      </div>
     </div>
 
     <nav class="tabs">
@@ -274,6 +284,7 @@
         <div class="schedule-grid-wrap">
           <table class="schedule-grid" id="scheduleGrid"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
         </div>
+        <div id="shiftTypesManager"></div>
       </div>
     </section>
 
@@ -288,7 +299,7 @@
   <div class="overlay hidden" id="identityOverlay">
     <div class="overlay-card">
       <h2>Who are you?</h2>
-      <p>Pick your name — this device will remember it, and it's used to attribute task reports and to check schedule-edit permission.</p>
+      <p>Pick your name — this device will remember it. Manager/Partner names with a 🔒 need their PIN.</p>
       <div id="identityList"></div>
       <button type="button" class="btn btn-secondary btn-small" style="margin-top:10px;" onclick="skipIdentity()">Skip for now — just browsing</button>
     </div>
@@ -341,7 +352,7 @@
         return `
           <div class="person-pick-group">
             <h4>${pos}</h4>
-            ${people.map(p => `<button type="button" class="person-pick" onclick="selectIdentity('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
+            ${people.map(p => `<button type="button" class="person-pick" onclick="selectIdentity('${p.id}')">${escapeHtml(p.name)}${isManager(p) && p.hasPin ? ' 🔒' : ''}</button>`).join('')}
           </div>
         `;
       }).join('');
@@ -369,8 +380,21 @@
     function selectIdentity(personId) {
       const person = allPeople.find(p => p.id === personId);
       if (!person) return;
+      if (isManager(person) && person.hasPin) {
+        const pin = prompt('Enter PIN for ' + person.name + ':');
+        if (pin === null) return; // cancelled
+        google.script.run.withSuccessHandler(ok => {
+          if (!ok) { alert('Incorrect PIN.'); return; }
+          finalizeIdentity(person);
+        }).verifyPin(personId, pin);
+        return;
+      }
+      finalizeIdentity(person);
+    }
+
+    function finalizeIdentity(person) {
       currentPerson = person;
-      localStorage.setItem(PERSON_STORAGE_KEY, personId);
+      localStorage.setItem(PERSON_STORAGE_KEY, person.id);
       updateWhoAmI();
       hideIdentityOverlay();
       renderSchedule();
@@ -379,6 +403,35 @@
     function updateWhoAmI() {
       document.getElementById('whoamiName').textContent = currentPerson ? currentPerson.name : 'Not selected';
       document.getElementById('whoamiPos').textContent = currentPerson ? '(' + currentPerson.position + ')' : '';
+      const pinBtn = document.getElementById('whoamiPinBtn');
+      if (currentPerson && isManager(currentPerson)) {
+        pinBtn.style.display = 'inline';
+        pinBtn.textContent = currentPerson.hasPin ? 'Change PIN' : '🔒 Secure with a PIN';
+      } else {
+        pinBtn.style.display = 'none';
+      }
+    }
+
+    /** A Manager/Partner sets or changes the PIN on their own picked identity, so no one else can pick it. */
+    function setMyPin() {
+      if (!currentPerson) return;
+      if (currentPerson.hasPin) {
+        const current = prompt('Enter your current PIN to change it:');
+        if (current === null) return;
+        google.script.run.withSuccessHandler(ok => {
+          if (!ok) { alert('Incorrect current PIN.'); return; }
+          promptNewPin();
+        }).verifyPin(currentPerson.id, current);
+      } else {
+        promptNewPin();
+      }
+    }
+
+    function promptNewPin() {
+      const pin = prompt('Set a new PIN (4+ digits):');
+      if (pin === null) return;
+      if (pin.trim().length < 4) { alert('PIN should be at least 4 digits.'); return; }
+      google.script.run.withSuccessHandler(loadPeople).setPersonPin(currentPerson.id, pin.trim());
     }
 
     function resolveIdentity() {
@@ -427,6 +480,7 @@
         renderTeam();
         onPositionChange();
         loadTasks();
+        loadShiftTypes();
         loadSchedule();
       }).getPeople();
     }).getConfig();
@@ -612,21 +666,27 @@
 
     // ---- schedule ----
     // Mirrors the weekly grid you share to the WhatsApp group: staff as rows,
-    // Mon–Sun as columns, each cell a shift code. Codes are free-form (typed
-    // via "Other…") but these are the common ones with a preset color.
-    const SHIFT_CODES = [
-      { code: '', label: '—', color: '#ffffff' },
-      { code: 'P', label: 'Pagi', color: '#c8e6c9' },
-      { code: 'S', label: 'Siang', color: '#bbdefb' },
-      { code: 'M', label: 'Malam', color: '#f8bbd0' },
-      { code: 'OFF', label: 'Off', color: '#ffcdd2' },
-      { code: 'CUTI', label: 'Cuti', color: '#ffe0b2' },
-    ];
-    const SHIFT_COLOR_BY_CODE = SHIFT_CODES.reduce((m, s) => { m[s.code] = s.color; return m; }, {});
+    // Mon–Sun as columns, each cell a shift code. The codes themselves (P,
+    // S, M, OFF, CUTI, ...) are managed in Team → "Manage shift types" —
+    // seeded with those defaults but fully editable/addable/removable.
+    let allShiftTypes = [];
     const OTHER_SHIFT_COLOR = '#e0e0e0';
+
+    function shiftTypeList() {
+      return [{ code: '', label: '—', color: '#ffffff' }].concat(allShiftTypes.filter((s) => s.active));
+    }
+
     function shiftColor(code) {
-      if (Object.prototype.hasOwnProperty.call(SHIFT_COLOR_BY_CODE, code)) return SHIFT_COLOR_BY_CODE[code];
+      const match = shiftTypeList().find((s) => s.code === code);
+      if (match) return match.color;
       return code ? OTHER_SHIFT_COLOR : '#ffffff';
+    }
+
+    function loadShiftTypes() {
+      google.script.run.withSuccessHandler(types => {
+        allShiftTypes = types;
+        renderSchedule();
+      }).getShiftTypes();
     }
 
     let scheduleWeekOffset = 0; // 0 = week containing today
@@ -669,9 +729,11 @@
         ? 'Click a cell to set a shift for that day — saves immediately.'
         : 'Read-only — ask a Showroom Manager or Partner to change the schedule.';
 
-      document.getElementById('scheduleLegend').innerHTML = SHIFT_CODES.filter(s => s.code).map((s) =>
+      const shiftTypes = shiftTypeList();
+      document.getElementById('scheduleLegend').innerHTML = shiftTypes.filter(s => s.code).map((s) =>
         `<span><span class="sw" style="background:${s.color};"></span>${s.code} = ${s.label}</span>`
       ).join('');
+      renderShiftTypesManager(manager);
 
       const dates = currentWeekDates();
       const weekdayAbbr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -679,7 +741,7 @@
 
       const roster = allPeople.filter((p) => p.active);
       const today = todayStr();
-      const knownCodes = SHIFT_CODES.map((s) => s.code);
+      const knownCodes = shiftTypes.map((s) => s.code);
 
       const head = '<tr><th>Staff</th>' + dates.map((date) => {
         const d = new Date(date + 'T00:00:00');
@@ -700,7 +762,7 @@
               return `<td class="${cls}">${code ? `<span class="cell-badge" style="background:${color};">${escapeHtml(code)}</span>` : ''}</td>`;
             }
             const isCustom = !!code && knownCodes.indexOf(code) === -1;
-            const options = SHIFT_CODES.map((s) =>
+            const options = shiftTypes.map((s) =>
               `<option value="${s.code}" ${!isCustom && s.code === code ? 'selected' : ''}>${s.code || '—'}</option>`
             ).join('') + `<option value="__other__" ${isCustom ? 'selected' : ''}>${isCustom ? escapeHtml(code) : 'Other…'}</option>`;
             return `<td class="${cls}"><select data-date="${date}" data-staff="${escapeHtml(p.name)}" style="background:${color};" onchange="onShiftCellChange(this)">${options}</select></td>`;
@@ -745,31 +807,121 @@
       }
     }
 
+    /** Lets a Manager/Partner define their own shift codes (beyond the seeded P/S/M/OFF/CUTI) before using them in the grid. */
+    function renderShiftTypesManager(manager) {
+      const container = document.getElementById('shiftTypesManager');
+      if (!manager) { container.innerHTML = ''; return; }
+
+      const rows = allShiftTypes.map((s) => `
+        <div class="shift-type-row">
+          <input type="text" class="code-input" value="${escapeHtml(s.code)}" onchange="saveShiftType('${s.id}', {code: this.value})">
+          <input type="text" value="${escapeHtml(s.label)}" onchange="saveShiftType('${s.id}', {label: this.value})" placeholder="Label">
+          <input type="color" value="${s.color}" onchange="saveShiftType('${s.id}', {color: this.value})">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+            <input type="checkbox" ${s.active ? 'checked' : ''} onchange="saveShiftType('${s.id}', {active: this.checked})"> Active
+          </label>
+          <button type="button" class="btn btn-danger btn-small" onclick="removeShiftType('${s.id}')">Delete</button>
+        </div>
+      `).join('') || '<div class="empty">No shift types yet.</div>';
+
+      container.innerHTML = `
+        <div class="shift-type-manager">
+          <h3>Manage shift types</h3>
+          <p class="hint">These are the codes selectable in each schedule cell.</p>
+          ${rows}
+          <div class="shift-type-row">
+            <input type="text" class="code-input" id="newShiftCode" placeholder="Code">
+            <input type="text" id="newShiftLabel" placeholder="Label">
+            <input type="color" id="newShiftColor" value="#e0e0e0">
+            <button type="button" class="btn btn-secondary btn-small" onclick="addShiftTypeFlow()">Add shift type</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function addShiftTypeFlow() {
+      const codeInput = document.getElementById('newShiftCode');
+      const labelInput = document.getElementById('newShiftLabel');
+      const colorInput = document.getElementById('newShiftColor');
+      const code = codeInput.value.trim();
+      if (!code) return;
+      google.script.run.withSuccessHandler(() => {
+        codeInput.value = ''; labelInput.value = ''; colorInput.value = '#e0e0e0';
+        loadShiftTypes();
+      }).withFailureHandler(err => alert(err.message || err))
+        .addShiftType(requesterId(), { code: code, label: labelInput.value.trim(), color: colorInput.value });
+    }
+
+    function saveShiftType(id, patch) {
+      google.script.run.withSuccessHandler(loadShiftTypes).withFailureHandler(err => { alert(err.message || err); loadShiftTypes(); })
+        .updateShiftType(requesterId(), id, patch);
+    }
+
+    function removeShiftType(id) {
+      if (!confirm('Delete this shift type? Existing schedule cells using it will show as a custom code.')) return;
+      google.script.run.withSuccessHandler(loadShiftTypes).withFailureHandler(err => alert(err.message || err))
+        .deleteShiftType(requesterId(), id);
+    }
+
     // ---- team ----
+    /** No Manager/Partner exists yet -> Team stays open so the first one can be created. */
+    function isBootstrapping() {
+      return !allPeople.some(p => isManager(p) && p.active);
+    }
+
+    function canEditTeam() {
+      return isBootstrapping() || isManager(currentPerson);
+    }
+
+    function requesterId() { return currentPerson ? currentPerson.id : null; }
+
     function renderTeam() {
       const container = document.getElementById('teamList');
-      container.innerHTML = config.positions.map(pos => {
+      const editable = canEditTeam();
+      const hint = editable
+        ? (isBootstrapping() ? 'No Manager/Partner yet — Team is open until the first one is added.' : 'You can add, edit, or remove people below.')
+        : 'Read-only — ask a Showroom Manager or Partner to update the team.';
+
+      container.innerHTML = `<p class="hint">${hint}</p>` + config.positions.map(pos => {
         const roster = allPeople.filter(p => p.position === pos);
-        const rows = roster.map(p => `
-          <div class="person-row">
-            <input type="text" value="${escapeHtml(p.name)}" onchange="savePerson('${p.id}', this.value, null)" placeholder="Name">
-            <input type="text" value="${escapeHtml(p.phone)}" onchange="savePerson('${p.id}', null, this.value)" placeholder="62812xxxxxxx">
-            <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
-              <input type="checkbox" ${p.active ? 'checked' : ''} onchange="setPersonActive('${p.id}', this.checked)"> Active
-            </label>
-            <button type="button" class="btn btn-danger btn-small" onclick="removePerson('${p.id}')">Delete</button>
+        const rows = roster.map(p => {
+          if (!editable) {
+            return `
+              <div class="person-row">
+                <span style="flex:1;">${escapeHtml(p.name)}${isManager(p) && p.hasPin ? ' 🔒' : ''}</span>
+                <span class="muted-text">${p.active ? 'Active' : 'Inactive'}</span>
+              </div>
+            `;
+          }
+          const resetPinBtn = (isManager(p) && p.hasPin && !(currentPerson && currentPerson.id === p.id))
+            ? `<button type="button" class="btn btn-secondary btn-small" onclick="resetPersonPin('${p.id}')" title="Clear this person's forgotten PIN">Reset PIN</button>`
+            : '';
+          return `
+            <div class="person-row">
+              <input type="text" value="${escapeHtml(p.name)}" onchange="savePerson('${p.id}', this.value, null)" placeholder="Name">
+              <input type="text" value="${escapeHtml(p.phone)}" onchange="savePerson('${p.id}', null, this.value)" placeholder="62812xxxxxxx">
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+                <input type="checkbox" ${p.active ? 'checked' : ''} onchange="setPersonActive('${p.id}', this.checked)"> Active
+              </label>
+              ${resetPinBtn}
+              <button type="button" class="btn btn-danger btn-small" onclick="removePerson('${p.id}')">Delete</button>
+            </div>
+          `;
+        }).join('') || '<div class="empty">No one added yet.</div>';
+
+        const addRow = editable ? `
+          <div class="add-person-row">
+            <input type="text" id="newName-${cssId(pos)}" placeholder="Name">
+            <input type="text" id="newPhone-${cssId(pos)}" placeholder="62812xxxxxxx">
+            <button type="button" class="btn btn-secondary btn-small" onclick="addPersonToPosition('${pos}')">Add</button>
           </div>
-        `).join('') || '<div class="empty">No one added yet.</div>';
+        ` : '';
 
         return `
           <div class="position-group">
             <h3>${pos}</h3>
             ${rows}
-            <div class="add-person-row">
-              <input type="text" id="newName-${cssId(pos)}" placeholder="Name">
-              <input type="text" id="newPhone-${cssId(pos)}" placeholder="62812xxxxxxx">
-              <button type="button" class="btn btn-secondary btn-small" onclick="addPersonToPosition('${pos}')">Add</button>
-            </div>
+            ${addRow}
           </div>
         `;
       }).join('');
@@ -786,7 +938,8 @@
         nameInput.value = '';
         phoneInput.value = '';
         loadPeople();
-      }).addPerson({ position: pos, name: name, phone: phoneInput.value.trim() });
+      }).withFailureHandler(err => alert(err.message || err))
+        .addPerson(requesterId(), { position: pos, name: name, phone: phoneInput.value.trim() });
     }
 
     function loadPeople() {
@@ -807,16 +960,25 @@
       const patch = {};
       if (name !== null) patch.name = name;
       if (phone !== null) patch.phone = phone;
-      google.script.run.withSuccessHandler(loadPeople).updatePerson(id, patch);
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => { alert(err.message || err); loadPeople(); })
+        .updatePerson(requesterId(), id, patch);
     }
 
     function setPersonActive(id, active) {
-      google.script.run.withSuccessHandler(loadPeople).updatePerson(id, { active: active });
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => { alert(err.message || err); loadPeople(); })
+        .updatePerson(requesterId(), id, { active: active });
     }
 
     function removePerson(id) {
       if (!confirm('Remove this person?')) return;
-      google.script.run.withSuccessHandler(loadPeople).deletePerson(id);
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => { alert(err.message || err); loadPeople(); })
+        .deletePerson(requesterId(), id);
+    }
+
+    function resetPersonPin(id) {
+      if (!confirm("Clear this person's PIN? They'll be pickable without one until they set a new PIN.")) return;
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => alert(err.message || err))
+        .resetPersonPin(requesterId(), id);
     }
   </script>
 </body>

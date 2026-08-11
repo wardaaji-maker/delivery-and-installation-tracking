@@ -11,32 +11,59 @@ Auto-detecting tasks from email/other platforms is **not** included yet
 — this is manual task entry only. The code is structured so that piece
 can be added later (e.g. a Gmail trigger calling `addTask`).
 
-## Identity — how the app knows who you are
+## Identity — how the app knows who you are, and PINs
 
 There's no Google account login. On first visit, an overlay asks you to
 pick your name from the Team roster; that choice is remembered on that
-device (via `localStorage`) until you tap **Switch user**. This is a
-convenience, not a security boundary — anyone at the device could pick a
-different name. What actually matters (editing the showroom schedule) is
-re-checked **server-side**: every schedule-editing call sends your
-picked identity, and `Code.gs` looks up that person's position fresh
-from the `People` sheet and rejects the call if they're not a Showroom
-Manager or Partner, regardless of what the browser claims. Task
-completions ("done" reports) use the same picked identity purely for
-attribution — there's no permission check on who can complete a task.
+device (via `localStorage`) until you tap **Switch user**.
 
-If you need this to be tamper-proof (e.g. staff sharing one tablet and
-you don't trust everyone to pick their own name honestly), that would
-require real Google account login instead — a bigger change (different
+Two independent layers back this up, because "just pick any name" is
+exploitable on its own — a Product Consultant could otherwise pick
+"Showroom Manager" and edit the schedule or the team:
+
+1. **Server-side position checks.** Editing the schedule, managing shift
+   types, or managing the Team roster all call `requireManager()` /
+   `requireManagerOrBootstrap()` in `Code.gs`, which looks up the caller's
+   position *fresh from the `People` sheet* on every call and rejects it
+   if they're not an active Showroom Manager or Partner — regardless of
+   what the browser sends. This alone stops any *other* action from being
+   silently allowed, but by itself it doesn't stop someone from picking a
+   manager's name in the first place.
+2. **PINs on Manager/Partner identities close that gap.** From the header
+   bar, a Manager/Partner can tap **🔒 Secure with a PIN** to set one on
+   their own picked identity. Once set, picking that name (in the
+   identity overlay, or via **Switch user**) requires the PIN — verified
+   server-side (`verifyPin`), which never sends the actual PIN value to
+   the browser. A Product Consultant with no PIN still can't be told the
+   Manager's PIN, so they can no longer just tap the name to "become" the
+   manager. If a PIN is forgotten, any *other* logged-in Manager/Partner
+   can clear it from the Team tab ("Reset PIN").
+
+**Team roster management itself is Manager/Partner-only**, with one
+exception: while no active Manager or Partner exists yet (a brand-new
+Sheet), Team stays open to anyone so the very first Manager can be
+created — this is `isBootstrapping()` in `Code.gs`. The moment one active
+Manager/Partner exists, that exception closes and only Manager/Partner
+identities can add, edit, or remove people (or reset PINs) from then on.
+
+This is still not cryptographically hardened — PINs are stored in plain
+text in the `People` sheet (same trust boundary as the Sheet itself: if
+someone has edit access to the underlying Sheet, they can already see or
+change anything). If you need real hardened auth (e.g. staff sharing one
+tablet and you don't trust the PIN-sharing honor system either), that
+would mean real Google account login instead — a bigger change (different
 deployment access settings, a company Google account per person) not
-included here.
+included here. Task completions ("done" reports) still use whichever
+identity is picked purely for attribution — there's no permission check
+on who can complete a task.
 
 ## What it does
 
-- **Team roster** (Team tab) — three fixed positions, top to bottom:
-  Showroom Manager → Showroom Manager Partner → Product Consultant.
-  Add, rename, re-phone, deactivate, or delete specific people under
-  each position at any time — no code changes needed.
+- **Team roster** (Team tab, Manager/Partner-only — see Identity below) —
+  three fixed positions, top to bottom: Showroom Manager → Showroom
+  Manager Partner → Product Consultant. Add, rename, re-phone,
+  deactivate, or delete specific people under each position at any
+  time — no code changes needed.
 - **Task categories by timeline** (New Task tab):
   - **Daily Routine** — recurs every day, no due date needed.
   - **Weekly** — recurs on one or more chosen weekdays (e.g. Monday +
@@ -58,12 +85,18 @@ included here.
   recorded against your picked identity and shown on the task card.
 - **Schedule tab** — a weekly grid (Mon–Sun) matching the shift-roster
   format shops usually share to WhatsApp: staff as rows, days as
-  columns, each cell a color-coded shift code (`P` Pagi, `S` Siang,
-  `M` Malam, `OFF`, `CUTI`, or any custom code via "Other…"). Prev/Next
-  buttons move between weeks. Only Showroom Manager/Partner identities
-  can edit cells; Product Consultants see it read-only with a hint to
-  ask a manager. A daily trigger posts each day's roster to your
-  WhatsApp group before operations start.
+  columns, each cell a color-coded shift code. Prev/Next buttons move
+  between weeks. Only Showroom Manager/Partner identities can edit
+  cells; Product Consultants see it read-only with a hint to ask a
+  manager. A daily trigger posts each day's roster to your WhatsApp
+  group before operations start.
+- **Shift types** (bottom of the Schedule tab, Manager/Partner-only) —
+  the codes selectable in each schedule cell. Seeded with `P` Pagi,
+  `S` Siang, `M` Malam, `OFF`, `CUTI` (matching a typical shared
+  roster), but you can rename, recolor, deactivate, delete, or add your
+  own codes before using them — nothing is hardcoded. A cell holding a
+  code that's since been deleted just renders as an unstyled custom
+  value ("Other…") rather than breaking.
 - A daily time-based trigger (`runDailyAutomation`, default **08:00**,
   before operations start) sends a WhatsApp reminder via Fonnte to each
   due task's resolved recipient(s), a category-grouped summary to
@@ -72,8 +105,9 @@ included here.
 ## Setup
 
 1. Create a new Google Sheet (or reuse one) — this will hold the
-   `Tasks`, `People`, and `Schedule` sheets, created automatically the
-   first time the script runs.
+   `Tasks`, `People`, `Schedule`, and `ShiftTypes` sheets, created
+   automatically the first time the script runs (`ShiftTypes` is also
+   seeded with the default P/S/M/OFF/CUTI codes on that first run only).
 2. **Extensions → Apps Script**. Delete the default `Code.gs` boilerplate.
 3. Create three files matching the ones in this folder and paste their
    contents in:
@@ -125,17 +159,19 @@ included here.
   and today's schedule.
 - If you'd previously deployed an earlier version of this script: the
   `Tasks` sheet gains two new trailing columns (`CompletedBy`,
-  `CompletionNote`) and the daily trigger function was renamed from
-  `sendDailyReminders` to `runDailyAutomation` — re-run
-  `createDailyTrigger` after updating the code so the old trigger gets
-  replaced instead of left dangling.
-- **Header self-healing**: every `Tasks`/`People`/`Schedule` sheet
-  access now checks that row 1 actually matches the expected header
-  (cell A1 equal to `ID`) and inserts a proper header row before
-  existing data if it's missing — no data is lost, rows just shift down
-  by one. This fixes the case where a sheet already existed (e.g. you
-  created the tab yourself, or it predates a column that got added
-  later) and never got headers written, which made the first real row
-  of data get silently treated as "the header" and skipped by the web
-  app. If a task you created isn't showing up, reload the web app once
-  — it repairs itself on the next sheet read.
+  `CompletionNote`), the `People` sheet gains a trailing `Pin` column,
+  and the daily trigger function was renamed from `sendDailyReminders`
+  to `runDailyAutomation` — re-run `createDailyTrigger` after updating
+  the code so the old trigger gets replaced instead of left dangling.
+- **Header self-healing**: every sheet access now checks that row 1
+  actually matches the expected header (cell A1 equal to `ID`) and
+  inserts a proper header row before existing data if it's missing — no
+  data is lost, rows just shift down by one. This fixes the case where a
+  sheet already existed (e.g. you created the tab yourself, or it
+  predates a column that got added later) and never got headers
+  written, which made the first real row of data get silently treated
+  as "the header" and skipped by the web app. If a task you created
+  isn't showing up, reload the web app once — it repairs itself on the
+  next sheet read.
+- PINs are plain text in the `People` sheet's `Pin` column — see
+  "Identity" above for what that trust boundary does and doesn't cover.

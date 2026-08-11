@@ -5,10 +5,17 @@
  * Reminders: sent via the Fonnte WhatsApp API (https://fonnte.com).
  *
  * Identity: there's no Google login gate — on first visit each person picks
- * their name from the People roster (remembered on that device). That's only
- * a UI convenience; every server action that matters (editing the showroom
- * schedule) re-checks the caller's position server-side via requireManager(),
- * so a spoofed personId still can't bypass the Manager/Partner-only rule.
+ * their name from the People roster (remembered on that device). Every
+ * server action that matters (editing the schedule, shift types, or the
+ * Team roster) re-checks the caller's position server-side via
+ * requireManager()/requireManagerOrBootstrap(), so a spoofed personId can't
+ * bypass the Manager/Partner-only rule on its own. On top of that, a Manager
+ * or Partner can set a PIN on their own identity (Team tab / "Set PIN" in
+ * the header) — once set, picking that identity requires the PIN, so a
+ * Product Consultant can no longer just tap a manager's name to "become"
+ * them. PINs are stored in plain text in the People sheet (same trust
+ * boundary as the Sheet itself), so this is a real access-control step up
+ * from "anyone can pick anyone," not a cryptographically hardened login.
  *
  * Script Properties (Project Settings → Script Properties):
  *   FONNTE_TOKEN      - your Fonnte device token (required to send WhatsApp reminders)
@@ -25,6 +32,7 @@
 const TASKS_SHEET_NAME = 'Tasks';
 const PEOPLE_SHEET_NAME = 'People';
 const SCHEDULE_SHEET_NAME = 'Schedule';
+const SHIFT_TYPES_SHEET_NAME = 'ShiftTypes';
 const FONNTE_API_URL = 'https://api.fonnte.com/send';
 
 const TASKS_HEADERS = [
@@ -32,8 +40,17 @@ const TASKS_HEADERS = [
   'DayOfMonth', 'DueDate', 'Position', 'AssigneeName', 'Active',
   'Status', 'LastCompletedDate', 'CreatedAt', 'CompletedBy', 'CompletionNote',
 ];
-const PEOPLE_HEADERS = ['ID', 'Position', 'Name', 'Phone', 'Active', 'CreatedAt'];
+const PEOPLE_HEADERS = ['ID', 'Position', 'Name', 'Phone', 'Active', 'CreatedAt', 'Pin'];
 const SCHEDULE_HEADERS = ['ID', 'Date', 'StaffName', 'ShiftNote', 'CreatedBy', 'CreatedAt'];
+const SHIFT_TYPE_HEADERS = ['ID', 'Code', 'Label', 'Color', 'Active', 'CreatedAt'];
+/** Seeded once, the first time the ShiftTypes sheet is created — matches the roster you already share to WhatsApp. */
+const DEFAULT_SHIFT_TYPES = [
+  ['P', 'Pagi', '#c8e6c9'],
+  ['S', 'Siang', '#bbdefb'],
+  ['M', 'Malam', '#f8bbd0'],
+  ['OFF', 'Off', '#ffcdd2'],
+  ['CUTI', 'Cuti', '#ffe0b2'],
+];
 
 const POSITIONS = ['Showroom Manager', 'Showroom Manager Partner', 'Product Consultant'];
 const MANAGER_POSITIONS = ['Showroom Manager', 'Showroom Manager Partner'];
@@ -75,6 +92,21 @@ function getTasksSheet() { return getOrCreateSheet(TASKS_SHEET_NAME, TASKS_HEADE
 function getPeopleSheet() { return getOrCreateSheet(PEOPLE_SHEET_NAME, PEOPLE_HEADERS); }
 function getScheduleSheet() { return getOrCreateSheet(SCHEDULE_SHEET_NAME, SCHEDULE_HEADERS); }
 
+/** Unlike the other sheets, this one seeds default rows — but only the very first time it's created. */
+function getShiftTypesSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHIFT_TYPES_SHEET_NAME);
+  const isNew = !sheet;
+  if (isNew) sheet = ss.insertSheet(SHIFT_TYPES_SHEET_NAME);
+  ensureHeaderRow(sheet, SHIFT_TYPE_HEADERS);
+  if (isNew) {
+    DEFAULT_SHIFT_TYPES.forEach(([code, label, color]) => {
+      sheet.appendRow([Utilities.getUuid(), code, label, color, true, new Date()]);
+    });
+  }
+  return sheet;
+}
+
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
@@ -110,6 +142,7 @@ function findRowById(sheet, id) {
 // People
 // ---------------------------------------------------------------------------
 
+/** Never exposes the actual Pin value to the client — only whether one is set (hasPin). */
 function getPeople() {
   const sheet = getPeopleSheet();
   const data = sheet.getDataRange().getValues();
@@ -121,6 +154,7 @@ function getPeople() {
       name: row[2],
       phone: row[3],
       active: row[4] !== false,
+      hasPin: !!row[6],
     }));
 }
 
@@ -128,26 +162,39 @@ function getPersonById(id) {
   return getPeople().find((p) => p.id === id) || null;
 }
 
+/** True until at least one active Manager/Partner exists — lets the very first one be created without a chicken-and-egg lockout. */
+function isBootstrapping() {
+  return getPeople().every((p) => MANAGER_POSITIONS.indexOf(p.position) === -1 || !p.active);
+}
+
 /** Throws unless `personId` belongs to an active Showroom Manager / Partner. */
 function requireManager(personId) {
   const person = getPersonById(personId);
   if (!person || !person.active || MANAGER_POSITIONS.indexOf(person.position) === -1) {
-    throw new Error('Only a Showroom Manager or Showroom Manager Partner can edit the schedule.');
+    throw new Error('Only a Showroom Manager or Showroom Manager Partner can do that.');
   }
   return person;
 }
 
-/** `person` = {position, name, phone} */
-function addPerson(person) {
+/** Same as requireManager(), but allows anyone through while no Manager/Partner exists yet. */
+function requireManagerOrBootstrap(personId) {
+  if (isBootstrapping()) return null;
+  return requireManager(personId);
+}
+
+/** `person` = {position, name, phone}. Manager/Partner only, except during initial bootstrap. */
+function addPerson(requesterId, person) {
+  requireManagerOrBootstrap(requesterId);
   if (!person || !person.name || !person.position) throw new Error('Name and position are required');
   const sheet = getPeopleSheet();
   const id = Utilities.getUuid();
-  sheet.appendRow([id, person.position, person.name, person.phone || '', true, new Date()]);
+  sheet.appendRow([id, person.position, person.name, person.phone || '', true, new Date(), '']);
   return id;
 }
 
-/** `patch` = {name?, phone?, active?} */
-function updatePerson(id, patch) {
+/** `patch` = {name?, phone?, active?}. Manager/Partner only, except during initial bootstrap. */
+function updatePerson(requesterId, id, patch) {
+  requireManagerOrBootstrap(requesterId);
   const sheet = getPeopleSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
@@ -157,12 +204,42 @@ function updatePerson(id, patch) {
   return true;
 }
 
-function deletePerson(id) {
+function deletePerson(requesterId, id) {
+  requireManagerOrBootstrap(requesterId);
   const sheet = getPeopleSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
   sheet.deleteRow(row);
   return true;
+}
+
+/** Self-service: a picked identity sets/changes its own PIN (blank clears it). Not gated on Manager — anyone may secure their own name. */
+function setPersonPin(personId, pin) {
+  const sheet = getPeopleSheet();
+  const row = findRowById(sheet, personId);
+  if (row === -1) return false;
+  sheet.getRange(row, 7).setValue(pin ? String(pin) : '');
+  return true;
+}
+
+/** Lets a Manager/Partner clear someone else's forgotten PIN. */
+function resetPersonPin(requesterId, targetId) {
+  requireManager(requesterId);
+  const sheet = getPeopleSheet();
+  const row = findRowById(sheet, targetId);
+  if (row === -1) return false;
+  sheet.getRange(row, 7).setValue('');
+  return true;
+}
+
+/** No PIN set yet -> anyone may pick that identity (matches hasPin=false client-side). */
+function verifyPin(personId, pin) {
+  const sheet = getPeopleSheet();
+  const row = findRowById(sheet, personId);
+  if (row === -1) return false;
+  const stored = sheet.getRange(row, 7).getValue();
+  if (!stored) return true;
+  return String(stored) === String(pin || '');
 }
 
 function groupPeopleByPosition(people) {
@@ -353,6 +430,60 @@ function updateScheduleEntry(personId, id, patch) {
 function deleteScheduleEntry(personId, id) {
   requireManager(personId);
   const sheet = getScheduleSheet();
+  const row = findRowById(sheet, id);
+  if (row === -1) return false;
+  sheet.deleteRow(row);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Shift types (Manager / Partner only) — the codes selectable in the
+// Schedule grid, e.g. P/Pagi, S/Siang. Seeded with defaults, fully editable.
+// ---------------------------------------------------------------------------
+
+function getShiftTypes() {
+  const sheet = getShiftTypesSheet();
+  const data = sheet.getDataRange().getValues();
+  return data.slice(1)
+    .filter((row) => row[0])
+    .map((row) => ({
+      id: row[0],
+      code: row[1],
+      label: row[2],
+      color: row[3],
+      active: row[4] !== false,
+    }));
+}
+
+/** `type` = {code, label, color}. Manager/Partner only. */
+function addShiftType(personId, type) {
+  requireManager(personId);
+  if (!type || !type.code) throw new Error('Code is required');
+  const code = String(type.code).trim().toUpperCase();
+  if (!code) throw new Error('Code is required');
+  if (getShiftTypes().some((t) => t.code === code)) throw new Error('That shift code already exists');
+  const sheet = getShiftTypesSheet();
+  const id = Utilities.getUuid();
+  sheet.appendRow([id, code, type.label || code, type.color || '#e0e0e0', true, new Date()]);
+  return id;
+}
+
+/** `patch` = {code?, label?, color?, active?}. Manager/Partner only. */
+function updateShiftType(personId, id, patch) {
+  requireManager(personId);
+  const sheet = getShiftTypesSheet();
+  const row = findRowById(sheet, id);
+  if (row === -1) return false;
+  if (patch.code !== undefined) sheet.getRange(row, 2).setValue(String(patch.code).trim().toUpperCase());
+  if (patch.label !== undefined) sheet.getRange(row, 3).setValue(patch.label);
+  if (patch.color !== undefined) sheet.getRange(row, 4).setValue(patch.color);
+  if (patch.active !== undefined) sheet.getRange(row, 5).setValue(patch.active);
+  return true;
+}
+
+function deleteShiftType(personId, id) {
+  requireManager(personId);
+  const sheet = getShiftTypesSheet();
   const row = findRowById(sheet, id);
   if (row === -1) return false;
   sheet.deleteRow(row);
