@@ -46,12 +46,29 @@ const PRIORITY_EMOJI = { Urgent: '🚨', High: '🔴', Medium: '🟡', Low: '�
 function getOrCreateSheet(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  ensureHeaderRow(sheet, headers);
+  return sheet;
+}
+
+/**
+ * Makes sure `sheet`'s row 1 is actually the header row, self-healing if
+ * it's missing — e.g. a sheet that already existed (created outside this
+ * script, or from before some column was added) never got headers written,
+ * so real data ended up in row 1 and getTasks()/getPeople()/getSchedule()
+ * silently treated it as the header and skipped it.
+ */
+function ensureHeaderRow(sheet, headers) {
+  if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
     sheet.setFrozenRows(1);
+    return;
   }
-  return sheet;
+  if (sheet.getRange(1, 1).getValue() !== headers[0]) {
+    sheet.insertRowBefore(1);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
 }
 
 function getTasksSheet() { return getOrCreateSheet(TASKS_SHEET_NAME, TASKS_HEADERS); }

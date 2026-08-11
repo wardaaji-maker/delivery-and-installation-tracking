@@ -56,11 +56,14 @@ included here.
   (resets automatically the next day) or paused without deleting them.
   Completing a task prompts for a short **report** (what you did),
   recorded against your picked identity and shown on the task card.
-- **Schedule tab** — a rolling 7-day showroom duty roster (who's on,
-  optional shift note per person per day). Only Showroom Manager/Partner
-  identities can add, edit, or delete entries; Product Consultants see
-  it read-only with a hint to ask a manager. A daily trigger posts each
-  day's roster to your WhatsApp group before operations start.
+- **Schedule tab** — a weekly grid (Mon–Sun) matching the shift-roster
+  format shops usually share to WhatsApp: staff as rows, days as
+  columns, each cell a color-coded shift code (`P` Pagi, `S` Siang,
+  `M` Malam, `OFF`, `CUTI`, or any custom code via "Other…"). Prev/Next
+  buttons move between weeks. Only Showroom Manager/Partner identities
+  can edit cells; Product Consultants see it read-only with a hint to
+  ask a manager. A daily trigger posts each day's roster to your
+  WhatsApp group before operations start.
 - A daily time-based trigger (`runDailyAutomation`, default **08:00**,
   before operations start) sends a WhatsApp reminder via Fonnte to each
   due task's resolved recipient(s), a category-grouped summary to
@@ -126,3 +129,13 @@ included here.
   `sendDailyReminders` to `runDailyAutomation` — re-run
   `createDailyTrigger` after updating the code so the old trigger gets
   replaced instead of left dangling.
+- **Header self-healing**: every `Tasks`/`People`/`Schedule` sheet
+  access now checks that row 1 actually matches the expected header
+  (cell A1 equal to `ID`) and inserts a proper header row before
+  existing data if it's missing — no data is lost, rows just shift down
+  by one. This fixes the case where a sheet already existed (e.g. you
+  created the tab yourself, or it predates a column that got added
+  later) and never got headers written, which made the first real row
+  of data get silently treated as "the header" and skipped by the web
+  app. If a task you created isn't showing up, reload the web app once
+  — it repairs itself on the next sheet read.

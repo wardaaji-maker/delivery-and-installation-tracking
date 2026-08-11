@@ -147,16 +147,22 @@
     .add-person-row { display: flex; gap: 8px; margin-top: 10px; }
     .add-person-row input { flex: 1; }
 
-    .schedule-days { display: flex; flex-direction: column; gap: 10px; }
-    .day-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-    .day-card h3 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; }
-    .day-card h3 .d { color: var(--muted); font-weight: 400; }
-    .shift-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
-    .shift-row .who { font-weight: 600; min-width: 110px; }
-    .shift-row input[type=text] { flex: 1; }
-    .add-shift-row { display: flex; gap: 6px; margin-top: 8px; }
-    .add-shift-row select { max-width: 150px; }
     .hint { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 4px; }
+
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; font-size: 11px; color: var(--muted); }
+    .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.1); }
+    .schedule-grid-wrap { overflow-x: auto; }
+    table.schedule-grid { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 12px; }
+    table.schedule-grid th, table.schedule-grid td {
+      border: 1px solid var(--border); padding: 4px; text-align: center; white-space: nowrap;
+    }
+    table.schedule-grid th { background: #fafafa; font-size: 11px; }
+    table.schedule-grid th .wd { display: block; font-weight: 700; }
+    table.schedule-grid th .dt { display: block; font-weight: 400; color: var(--muted); }
+    table.schedule-grid td.staff-name { text-align: left; font-weight: 600; position: sticky; left: 0; background: #fff; }
+    table.schedule-grid th.today, table.schedule-grid td.today-col { background: #eef2ff; }
+    table.schedule-grid select { border: none; text-align: center; font-size: 12px; font-weight: 600; padding: 5px 2px; border-radius: 4px; }
+    table.schedule-grid .cell-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: 600; min-width: 40px; }
   </style>
 </head>
 <body>
@@ -254,9 +260,20 @@
 
     <section id="tab-schedule" class="tabpanel">
       <div class="card">
-        <h2>Showroom schedule — next 7 days</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <h2 style="margin:0;">Showroom schedule</h2>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button type="button" class="btn btn-secondary btn-small" onclick="shiftWeek(-1)">‹ Prev</button>
+            <span class="muted-text" id="weekLabel" style="min-width:150px;text-align:center;"></span>
+            <button type="button" class="btn btn-secondary btn-small" onclick="shiftWeek(1)">Next ›</button>
+            <button type="button" class="btn btn-secondary btn-small" onclick="goToThisWeek()">This week</button>
+          </div>
+        </div>
         <p class="hint" id="scheduleHint"></p>
-        <div class="schedule-days" id="scheduleDays"><div class="empty">Loading…</div></div>
+        <div class="legend" id="scheduleLegend"></div>
+        <div class="schedule-grid-wrap">
+          <table class="schedule-grid" id="scheduleGrid"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
+        </div>
       </div>
     </section>
 
@@ -594,91 +611,138 @@
     });
 
     // ---- schedule ----
+    // Mirrors the weekly grid you share to the WhatsApp group: staff as rows,
+    // Mon–Sun as columns, each cell a shift code. Codes are free-form (typed
+    // via "Other…") but these are the common ones with a preset color.
+    const SHIFT_CODES = [
+      { code: '', label: '—', color: '#ffffff' },
+      { code: 'P', label: 'Pagi', color: '#c8e6c9' },
+      { code: 'S', label: 'Siang', color: '#bbdefb' },
+      { code: 'M', label: 'Malam', color: '#f8bbd0' },
+      { code: 'OFF', label: 'Off', color: '#ffcdd2' },
+      { code: 'CUTI', label: 'Cuti', color: '#ffe0b2' },
+    ];
+    const SHIFT_COLOR_BY_CODE = SHIFT_CODES.reduce((m, s) => { m[s.code] = s.color; return m; }, {});
+    const OTHER_SHIFT_COLOR = '#e0e0e0';
+    function shiftColor(code) {
+      if (Object.prototype.hasOwnProperty.call(SHIFT_COLOR_BY_CODE, code)) return SHIFT_COLOR_BY_CODE[code];
+      return code ? OTHER_SHIFT_COLOR : '#ffffff';
+    }
+
+    let scheduleWeekOffset = 0; // 0 = week containing today
+
+    function mondayOf(date) {
+      const d = new Date(date);
+      const day = d.getDay(); // 0=Sun..6=Sat
+      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      return d;
+    }
+
+    function currentWeekDates() {
+      const base = new Date();
+      base.setDate(base.getDate() + scheduleWeekOffset * 7);
+      const monday = mondayOf(base);
+      const dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(d.getDate() + i);
+        dates.push(localDateStr(d));
+      }
+      return dates;
+    }
+
+    function shiftWeek(delta) { scheduleWeekOffset += delta; loadSchedule(); }
+    function goToThisWeek() { scheduleWeekOffset = 0; loadSchedule(); }
+
     function loadSchedule() {
-      const start = todayStr();
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 6);
-      const end = localDateStr(endDate);
+      const dates = currentWeekDates();
       google.script.run.withSuccessHandler(entries => {
         allSchedule = entries;
         renderSchedule();
-      }).getSchedule(start, end);
+      }).getSchedule(dates[0], dates[6]);
     }
 
     function renderSchedule() {
       const hint = document.getElementById('scheduleHint');
       const manager = isManager(currentPerson);
       hint.textContent = manager
-        ? 'You can add, edit, or remove shifts below.'
+        ? 'Click a cell to set a shift for that day — saves immediately.'
         : 'Read-only — ask a Showroom Manager or Partner to change the schedule.';
 
-      const days = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date();
-        d.setDate(d.getDate() + i);
-        days.push(localDateStr(d));
-      }
-      const weekdayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-      const activeRoster = allPeople.filter(p => p.active);
+      document.getElementById('scheduleLegend').innerHTML = SHIFT_CODES.filter(s => s.code).map((s) =>
+        `<span><span class="sw" style="background:${s.color};"></span>${s.code} = ${s.label}</span>`
+      ).join('');
 
-      document.getElementById('scheduleDays').innerHTML = days.map(date => {
+      const dates = currentWeekDates();
+      const weekdayAbbr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      document.getElementById('weekLabel').textContent = dates[0] + ' → ' + dates[6];
+
+      const roster = allPeople.filter((p) => p.active);
+      const today = todayStr();
+      const knownCodes = SHIFT_CODES.map((s) => s.code);
+
+      const head = '<tr><th>Staff</th>' + dates.map((date) => {
         const d = new Date(date + 'T00:00:00');
-        const label = weekdayNames[d.getDay()] + (date === todayStr() ? ' (Today)' : '');
-        const entries = allSchedule.filter(e => e.date === date);
-        const rows = entries.map(e => `
-          <div class="shift-row">
-            <span class="who">${escapeHtml(e.staffName)}</span>
-            <input type="text" value="${escapeHtml(e.shiftNote)}" placeholder="shift note (optional)"
-              ${manager ? `onchange="saveScheduleNote('${e.id}', this.value)"` : 'disabled'}>
-            ${manager ? `<button type="button" class="btn btn-danger btn-small" onclick="removeScheduleEntry('${e.id}')">✕</button>` : ''}
-          </div>
-        `).join('') || '<div class="muted-text">No one scheduled.</div>';
+        return `<th class="${date === today ? 'today' : ''}"><span class="wd">${weekdayAbbr[d.getDay()]}</span><span class="dt">${date.slice(5)}</span></th>`;
+      }).join('') + '</tr>';
 
-        const addRow = manager ? `
-          <div class="add-shift-row">
-            <select id="addStaff-${date}">
-              ${activeRoster.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('') || '<option value="">No people yet</option>'}
-            </select>
-            <input type="text" id="addNote-${date}" placeholder="shift note (optional)">
-            <button type="button" class="btn btn-secondary btn-small" onclick="addScheduleRow('${date}')">Add</button>
-          </div>
-        ` : '';
+      let body;
+      if (roster.length === 0) {
+        body = `<tr><td colspan="${dates.length + 1}" class="empty">No active people in Team yet.</td></tr>`;
+      } else {
+        body = roster.map((p) => {
+          const cells = dates.map((date) => {
+            const entry = allSchedule.find((e) => e.date === date && e.staffName === p.name);
+            const code = entry ? entry.shiftNote : '';
+            const color = shiftColor(code);
+            const cls = date === today ? 'today-col' : '';
+            if (!manager) {
+              return `<td class="${cls}">${code ? `<span class="cell-badge" style="background:${color};">${escapeHtml(code)}</span>` : ''}</td>`;
+            }
+            const isCustom = !!code && knownCodes.indexOf(code) === -1;
+            const options = SHIFT_CODES.map((s) =>
+              `<option value="${s.code}" ${!isCustom && s.code === code ? 'selected' : ''}>${s.code || '—'}</option>`
+            ).join('') + `<option value="__other__" ${isCustom ? 'selected' : ''}>${isCustom ? escapeHtml(code) : 'Other…'}</option>`;
+            return `<td class="${cls}"><select data-date="${date}" data-staff="${escapeHtml(p.name)}" style="background:${color};" onchange="onShiftCellChange(this)">${options}</select></td>`;
+          }).join('');
+          return `<tr><td class="staff-name">${escapeHtml(p.name)}</td>${cells}</tr>`;
+        }).join('');
+      }
 
-        return `
-          <div class="day-card">
-            <h3><span>${label}</span><span class="d">${date}</span></h3>
-            ${rows}
-            ${addRow}
-          </div>
-        `;
-      }).join('');
+      document.getElementById('scheduleGrid').innerHTML = '<thead>' + head + '</thead><tbody>' + body + '</tbody>';
     }
 
-    function addScheduleRow(date) {
-      if (!currentPerson) { showIdentityOverlay(); return; }
-      const staffSelect = document.getElementById('addStaff-' + date);
-      const noteInput = document.getElementById('addNote-' + date);
-      if (!staffSelect.value) return;
-      google.script.run
-        .withSuccessHandler(loadSchedule)
-        .withFailureHandler(err => alert(err.message || err))
-        .addScheduleEntry(currentPerson.id, { date: date, staffName: staffSelect.value, shiftNote: noteInput.value.trim() });
-    }
+    function onShiftCellChange(select) {
+      const date = select.dataset.date;
+      const staffName = select.dataset.staff;
+      if (!currentPerson) { showIdentityOverlay(); renderSchedule(); return; }
 
-    function saveScheduleNote(id, shiftNote) {
-      if (!currentPerson) { showIdentityOverlay(); return; }
-      google.script.run
-        .withFailureHandler(err => alert(err.message || err))
-        .updateScheduleEntry(currentPerson.id, id, { shiftNote: shiftNote });
-    }
+      let code = select.value;
+      if (code === '__other__') {
+        const custom = (prompt('Custom shift code (e.g. DKB PAGI):', '') || '').trim().toUpperCase();
+        if (!custom) { renderSchedule(); return; }
+        code = custom;
+      }
 
-    function removeScheduleEntry(id) {
-      if (!currentPerson) { showIdentityOverlay(); return; }
-      if (!confirm('Remove this shift?')) return;
-      google.script.run
-        .withSuccessHandler(loadSchedule)
-        .withFailureHandler(err => alert(err.message || err))
-        .deleteScheduleEntry(currentPerson.id, id);
+      const existing = allSchedule.find((e) => e.date === date && e.staffName === staffName);
+      const onError = (err) => { alert(err.message || err); loadSchedule(); };
+
+      if (!code) {
+        if (existing) {
+          google.script.run.withSuccessHandler(loadSchedule).withFailureHandler(onError)
+            .deleteScheduleEntry(currentPerson.id, existing.id);
+        } else {
+          renderSchedule();
+        }
+        return;
+      }
+      if (existing) {
+        google.script.run.withSuccessHandler(loadSchedule).withFailureHandler(onError)
+          .updateScheduleEntry(currentPerson.id, existing.id, { shiftNote: code });
+      } else {
+        google.script.run.withSuccessHandler(loadSchedule).withFailureHandler(onError)
+          .addScheduleEntry(currentPerson.id, { date: date, staffName: staffName, shiftNote: code });
+      }
     }
 
     // ---- team ----
