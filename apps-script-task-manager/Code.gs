@@ -30,6 +30,21 @@
  *   SCHEDULE_TARGETS  - optional; same format as REMINDER_TARGETS, for where
  *                       the daily showroom schedule post goes. Falls back to
  *                       REMINDER_TARGETS if not set.
+ *   WEBHOOK_SECRET    - required for reply-to-complete (see below): an
+ *                       arbitrary string only you know, appended as
+ *                       ?token=... to the webhook URL you give Fonnte.
+ *
+ * Reply-to-complete: every reminder line carries a short [CODE] tag (the
+ * task's ID, shortened). Fonnte is configured (in its dashboard) to POST
+ * incoming WhatsApp messages to this web app's URL; doPost() reads the
+ * leading CODE + the rest of the message as a free-text completion report,
+ * matches it to a task, and calls completeTask() — same as clicking "Done"
+ * in the web app, just from WhatsApp. An attached photo is optional and, if
+ * present, is saved to a Drive folder and linked on the task. See README
+ * for the Fonnte-side webhook setup and the deployment-access tradeoff this
+ * requires (the app must accept POSTs from Fonnte's servers, so "Anyone"
+ * access — WEBHOOK_SECRET is what keeps that from being a fully open
+ * endpoint).
  */
 
 const TASKS_SHEET_NAME = 'Tasks';
@@ -518,6 +533,11 @@ function sendFonnteMessage(target, message) {
   return response.getContentText();
 }
 
+/** Short, stable per-task tag used in reminder messages and matched back against replies (see doPost()). */
+function refCode(id) {
+  return String(id).replace(/-/g, '').slice(-6).toUpperCase();
+}
+
 function isScheduledToday(task, today, todayWeekday, todayDayOfMonth) {
   if (task.category === 'Daily Routine') return true;
   if (task.category === 'Weekly') {
@@ -537,8 +557,9 @@ function notifyUrgentTaskNow(taskId) {
   const targets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
   if (!targets) return;
   const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
-  const message = `${emoji} [URGENT] ${task.title}\nPriority: ${task.priority}\nAssigned: ${task.position} (${task.assigneeName})` +
-    (task.description ? `\n${task.description}` : '');
+  const message = `${emoji} [URGENT] ${task.title} [${refCode(task.id)}]\nPriority: ${task.priority}\nAssigned: ${task.position} (${task.assigneeName})` +
+    (task.description ? `\n${task.description}` : '') +
+    `\n\nReply here with "${refCode(task.id)} what you did" to mark it done — a photo is optional.`;
   sendFonnteMessage(targets, message);
 }
 
@@ -574,11 +595,12 @@ function sendDailyReminders() {
     const sections = CATEGORIES.filter((cat) => byCategory[cat]).map((cat) => {
       const lines = byCategory[cat].map((task) => {
         const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
-        return `${emoji} ${task.title} — ${task.priority} — ${task.position} (${task.assigneeName})`;
+        return `${emoji} ${task.title} — ${task.priority} — ${task.position} (${task.assigneeName}) [${refCode(task.id)}]`;
       });
       return `*${cat}*\n${lines.join('\n')}`;
     });
-    const summary = `📋 Daily Task Summary — ${due.length} task(s) need attention:\n\n${sections.join('\n\n')}`;
+    const howTo = 'Reply with a task\'s code + what you did to mark it done, e.g. "8F3A21 closed the shop, swept floor" — a photo is optional.';
+    const summary = `📋 Daily Task Summary — ${due.length} task(s) need attention:\n\n${sections.join('\n\n')}\n\n${howTo}`;
     try {
       sendFonnteMessage(reminderTargets, summary);
     } catch (err) {
@@ -633,4 +655,128 @@ function deleteDailyTriggers() {
       ScriptApp.deleteTrigger(trigger);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Reply-to-complete: Fonnte POSTs incoming WhatsApp messages here. A message
+// starting with a task's [CODE] (see refCode()) completes that task, using
+// the rest of the message as the completion report and any attached photo
+// as optional proof. See the file header for the Fonnte-side setup this
+// needs, and the README for the full walkthrough + a caveat: Fonnte's exact
+// webhook field names are matched best-effort below (see EXTRA-field
+// fallbacks) — check the Apps Script "Executions" log against a real
+// incoming message and adjust extractX() below if a field isn't found.
+// ---------------------------------------------------------------------------
+
+function doPost(e) {
+  try {
+    const secret = PropertiesService.getScriptProperties().getProperty('WEBHOOK_SECRET');
+    const providedToken = e && e.parameter && e.parameter.token;
+    if (!secret || providedToken !== secret) {
+      return ContentService.createTextOutput('ignored').setMimeType(ContentService.MimeType.TEXT);
+    }
+    const body = parseIncomingPayload(e);
+    Logger.log('Incoming WhatsApp webhook: %s', JSON.stringify(body));
+    if (body) handleIncomingWhatsAppMessage(body);
+  } catch (err) {
+    Logger.log('doPost error: %s', err);
+  }
+  return ContentService.createTextOutput('ok').setMimeType(ContentService.MimeType.TEXT);
+}
+
+function parseIncomingPayload(e) {
+  if (!e) return null;
+  if (e.postData && e.postData.contents) {
+    try {
+      return JSON.parse(e.postData.contents);
+    } catch (err) {
+      // Not JSON — fall through to form/query params below.
+    }
+  }
+  if (e.parameter && Object.keys(e.parameter).length > 0) return e.parameter;
+  return null;
+}
+
+/** Fonnte's field name for the message body — adjust here if logging shows a different one. */
+function extractMessageText(body) {
+  return body.message || body.text || body.pesan || '';
+}
+
+/** Fonnte's field name for the actual sender's number (in a group, distinct from the group ID) — adjust here if needed. */
+function extractSenderPhone(body) {
+  return body.member || body.sender_phone || body.phone || body.sender || '';
+}
+
+/** Fonnte's field name for an attached image's downloadable URL — adjust here if needed. */
+function extractImageUrl(body) {
+  const url = body.url || body.file || body.media || body.image || '';
+  return url && /^https?:\/\//.test(url) ? url : '';
+}
+
+function normalizePhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.indexOf('0') === 0) return '62' + digits.slice(1);
+  return digits;
+}
+
+function findPersonByPhone(phone) {
+  const target = normalizePhone(phone);
+  if (!target) return null;
+  return getPeople().find((p) => normalizePhone(p.phone) === target) || null;
+}
+
+function handleIncomingWhatsAppMessage(body) {
+  const text = String(extractMessageText(body) || '').trim();
+  const match = text.match(/^([0-9A-Fa-f]{6})\b\s*([\s\S]*)$/);
+  if (!match) return; // Doesn't start with a task code — ordinary chat, ignore silently.
+
+  const code = match[1].toUpperCase();
+  const note = (match[2] || '').trim();
+  const task = getTasks().find((t) => refCode(t.id) === code);
+
+  const reminderTargets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
+  if (!task) {
+    if (reminderTargets) sendFonnteMessage(reminderTargets, `⚠️ No task found for code ${code}.`);
+    return;
+  }
+
+  const senderPhone = extractSenderPhone(body);
+  const person = findPersonByPhone(senderPhone);
+  const who = person ? person.name : (senderPhone || 'Someone');
+  const attributedNote = person ? note : `(from ${senderPhone || 'unknown number'}) ${note}`.trim();
+
+  const imageUrl = extractImageUrl(body);
+  let photoLine = '';
+  if (imageUrl) {
+    try {
+      const fileUrl = saveIncomingTaskPhoto(imageUrl, task.title);
+      photoLine = `\n📷 ${fileUrl}`;
+    } catch (err) {
+      Logger.log('Saving incoming photo failed: %s', err);
+    }
+  }
+
+  completeTask(task.id, person ? person.id : '', (attributedNote + photoLine).trim());
+
+  if (reminderTargets) {
+    const lines = [`✅ ${who} marked "${task.title}" done.`];
+    if (note) lines.push(`📝 ${note}`);
+    if (imageUrl) lines.push(photoLine ? '📷 Photo saved.' : '📷 Photo received but could not be saved — check it manually.');
+    sendFonnteMessage(reminderTargets, lines.join('\n'));
+  }
+}
+
+function saveIncomingTaskPhoto(url, taskTitle) {
+  const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  const blob = response.getBlob();
+  const folder = getTaskPhotosFolder();
+  const file = folder.createFile(blob).setName(taskTitle + ' — ' + new Date().toISOString());
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
+
+function getTaskPhotosFolder() {
+  const name = 'Task Manager Photos';
+  const folders = DriveApp.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(name);
 }

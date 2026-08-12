@@ -111,6 +111,16 @@ on who can complete a task.
   Urgent task sends on creation. Point those properties at your group
   (or a comma-separated mix of numbers/groups) to control exactly who
   sees reminders.
+- **Reply-to-complete** (optional, needs the webhook setup below) —
+  every reminder line ends with a short `[CODE]` tag. Anyone replies
+  in the WhatsApp group with `CODE what I did` (e.g.
+  `8F3A21 closed the shop, swept floor`) and the matching task is
+  marked done, with everything after the code saved as that task's
+  completion report — same as typing it into the web app's "Done"
+  prompt, just from WhatsApp. A photo in the same message is optional;
+  if present, it's saved to a Google Drive folder ("Task Manager
+  Photos") and linked in the report. The group gets a confirmation
+  (`✅ <name> marked "<task>" done`) either way.
 
 ## Setup
 
@@ -138,14 +148,39 @@ on who can complete a task.
      showroom schedule post goes if it should be different from
      `REMINDER_TARGETS` (e.g. a dedicated group). Falls back to
      `REMINDER_TARGETS` if not set.
+   - `WEBHOOK_SECRET` (only if you want reply-to-complete — step 7) — any
+     string you make up, e.g. a random 20-character password.
 5. In the Apps Script editor, select the `createDailyTrigger` function
    in the toolbar dropdown and click **Run** once — this schedules
    `runDailyAutomation` to run every day at 08:00 (script timezone, set
    to `Asia/Jakarta` in `appsscript.json` — change if needed).
-6. **Deploy → New deployment → Web app**. Set "Execute as: Me" and
-   "Who has access" to your preference, then deploy. Open the resulting
-   URL — that's your task manager.
-7. Open the **Team** tab first and add your people under each position
+6. **Deploy → New deployment → Web app**. Set "Execute as: Me". For
+   "Who has access": if you're skipping reply-to-complete, pick whatever
+   you like; if you're setting it up (step 7), it **must** be "Anyone" —
+   Fonnte's servers aren't a Google account and can't complete a sign-in
+   redirect, so anything narrower silently fails the webhook. Deploy and
+   open the resulting URL — that's your task manager.
+7. **Optional — reply-to-complete.** Requires `WEBHOOK_SECRET` (step 4)
+   and "Anyone" access (step 6):
+   1. Take your deployed web app URL and append
+      `?token=<your WEBHOOK_SECRET>` to it.
+   2. In your Fonnte device dashboard, find the incoming-message webhook
+      setting and paste that full URL in.
+   3. Send a test message (with `8F3A21 test note` as the text, or any
+      real task's code from a reminder you've already received) in the
+      group. Check **Apps Script → Executions** in the editor — it logs
+      the raw payload Fonnte sent (`Incoming WhatsApp webhook: ...`).
+   4. **This is the part that needs your verification**: Fonnte's exact
+      field names for "who sent this" and "attached photo URL" aren't
+      guaranteed by this code — `extractSenderPhone()` and
+      `extractImageUrl()` in `Code.gs` check a few likely field names
+      (`member`/`sender_phone`/`phone`/`sender`, and
+      `url`/`file`/`media`/`image`) as a best guess. If step 3's logged
+      payload doesn't match — the confirmation message says "Someone"
+      instead of a name, or a photo doesn't get saved — open the logged
+      JSON, find the real field name, and add it to the relevant
+      `extractX()` function.
+8. Open the **Team** tab first and add your people under each position
    — the identity picker, New Task Assignee dropdown, and Schedule tab
    all read from that roster.
 
@@ -188,3 +223,20 @@ on who can complete a task.
   next sheet read.
 - PINs are plain text in the `People` sheet's `Pin` column — see
   "Identity" above for what that trust boundary does and doesn't cover.
+- Reply-to-complete's `[CODE]` is the task's ID, shortened to its last 6
+  hex characters — stable for that task's lifetime (not re-issued daily),
+  so an old reminder's code still works days later. If the sender's
+  phone number doesn't match anyone active in Team, the task still
+  completes — the report is just prefixed `(from <number>)` instead of
+  being attributed to a name.
+- `doPost()` requires the `?token=...` query param to exactly match
+  `WEBHOOK_SECRET`; anything else (including no `WEBHOOK_SECRET` set at
+  all) gets silently ignored rather than erroring, so a stray POST from
+  elsewhere on the internet can't do anything even though the
+  deployment is publicly reachable.
+- The web app being deployed as "Anyone" (needed for the webhook) means
+  its URL alone lets anyone view the task manager UI — there's no login
+  wall on `doGet`. This was already loosely true given the PIN-based
+  identity model (see "Identity" above); reply-to-complete just also
+  requires it to be true for unauthenticated *requests*, not just page
+  views.
