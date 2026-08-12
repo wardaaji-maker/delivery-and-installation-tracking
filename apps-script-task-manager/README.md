@@ -103,9 +103,14 @@ on who can complete a task.
   code that's since been deleted just renders as an unstyled custom
   value ("Other…") rather than breaking.
 - A daily time-based trigger (`runDailyAutomation`, default **08:00**,
-  before operations start) sends a WhatsApp reminder via Fonnte to each
-  due task's resolved recipient(s), a category-grouped summary to
-  `REMINDER_TARGETS`, and today's schedule to `SCHEDULE_TARGETS`.
+  before operations start) sends a single category-grouped WhatsApp
+  summary of everything due today to `REMINDER_TARGETS`, plus today's
+  schedule to `SCHEDULE_TARGETS`. **All WhatsApp sends go to
+  `REMINDER_TARGETS`/`SCHEDULE_TARGETS` only** — nothing is ever DMed to
+  an individual's private number, including the immediate ping an
+  Urgent task sends on creation. Point those properties at your group
+  (or a comma-separated mix of numbers/groups) to control exactly who
+  sees reminders.
 
 ## Setup
 
@@ -146,9 +151,12 @@ on who can complete a task.
 
 ## Notes
 
-- Phone numbers are passed straight to Fonnte's `target` field — use
-  whatever format your Fonnte account expects (usually `62...` with no
-  leading `0` or `+`).
+- The `Phone` field in Team is contact info only — it's not currently
+  used for sending anything (see "All WhatsApp sends go to
+  REMINDER_TARGETS/SCHEDULE_TARGETS only" above). Whatever numbers/group
+  IDs you put in `REMINDER_TARGETS`/`SCHEDULE_TARGETS` are passed
+  straight to Fonnte's `target` field — use whatever format your Fonnte
+  account expects (usually `62...` with no leading `0` or `+`).
 - If `FONNTE_TOKEN` is missing, task/team/schedule CRUD still works;
   only WhatsApp sending will throw (caught and logged during the daily
   run, so one failed message won't block the rest).

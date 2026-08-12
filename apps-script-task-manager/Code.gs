@@ -257,15 +257,6 @@ function verifyPin(personId, pin) {
   return String(stored) === String(pin || '');
 }
 
-function groupPeopleByPosition(people) {
-  const byPosition = {};
-  people.forEach((p) => {
-    if (!byPosition[p.position]) byPosition[p.position] = [];
-    byPosition[p.position].push(p);
-  });
-  return byPosition;
-}
-
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
@@ -332,7 +323,7 @@ function addTask(task) {
   ]);
   if (priority === 'Urgent') {
     try {
-      notifyTaskNow(id, 'URGENT');
+      notifyUrgentTaskNow(id);
     } catch (err) {
       Logger.log('Urgent notification failed for task %s: %s', id, err);
     }
@@ -527,16 +518,6 @@ function sendFonnteMessage(target, message) {
   return response.getContentText();
 }
 
-/** Phone numbers to notify for a task: the named person, or everyone active in its Position if AssigneeName is "All". */
-function resolveRecipients(task, peopleByPosition) {
-  const roster = peopleByPosition[task.position] || [];
-  if (task.assigneeName && task.assigneeName !== 'All') {
-    const person = roster.find((p) => p.name === task.assigneeName);
-    return person && person.active && person.phone ? [person.phone] : [];
-  }
-  return roster.filter((p) => p.active && p.phone).map((p) => p.phone);
-}
-
 function isScheduledToday(task, today, todayWeekday, todayDayOfMonth) {
   if (task.category === 'Daily Routine') return true;
   if (task.category === 'Weekly') {
@@ -549,24 +530,23 @@ function isScheduledToday(task, today, todayWeekday, todayDayOfMonth) {
   return false;
 }
 
-/** Sends an immediate WhatsApp ping for one task right now (used for Urgent tasks on creation). */
-function notifyTaskNow(taskId, label) {
+/** Sends an immediate WhatsApp ping to REMINDER_TARGETS right now (used for Urgent tasks on creation) — group only, never a private number. */
+function notifyUrgentTaskNow(taskId) {
   const task = getTasks().find((t) => t.id === taskId);
   if (!task) return;
-  const peopleByPosition = groupPeopleByPosition(getPeople());
-  const recipients = resolveRecipients(task, peopleByPosition);
-  if (recipients.length === 0) return;
+  const targets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
+  if (!targets) return;
   const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
-  const message = `${emoji} [${label}] ${task.title}\nPriority: ${task.priority}\nAssigned: ${task.assigneeName}` +
+  const message = `${emoji} [URGENT] ${task.title}\nPriority: ${task.priority}\nAssigned: ${task.position} (${task.assigneeName})` +
     (task.description ? `\n${task.description}` : '');
-  sendFonnteMessage(recipients.join(','), message);
+  sendFonnteMessage(targets, message);
 }
 
 /**
- * Sends WhatsApp reminders (via Fonnte) for every active task scheduled for
- * today and not yet done — one message per resolved recipient, plus a
- * category-grouped summary to REMINDER_TARGETS. Meant to run on a daily
- * time-based trigger (default 08:00, before operations start).
+ * Sends a single category-grouped WhatsApp summary to REMINDER_TARGETS for
+ * every active task scheduled today and not yet done — group only, never a
+ * private number. Meant to run on a daily time-based trigger (default
+ * 08:00, before operations start).
  */
 function sendDailyReminders() {
   const tasks = getTasks().filter((t) => t.active);
@@ -576,7 +556,6 @@ function sendDailyReminders() {
   const todayWeekday = Utilities.formatDate(now, tz, 'EEEE');
   const todayDayOfMonth = Utilities.formatDate(now, tz, 'd');
   const reminderTargets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
-  const peopleByPosition = groupPeopleByPosition(getPeople());
 
   const due = tasks.filter((task) => {
     if (!isScheduledToday(task, today, todayWeekday, todayDayOfMonth)) return false;
@@ -585,20 +564,6 @@ function sendDailyReminders() {
   });
 
   due.sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3));
-
-  due.forEach((task) => {
-    const recipients = resolveRecipients(task, peopleByPosition);
-    if (recipients.length === 0) return;
-    const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
-    const overdue = task.category === 'One-time' && task.dueDate < today;
-    const label = overdue ? 'OVERDUE' : task.category === 'One-time' ? 'DUE TODAY' : task.category.toUpperCase();
-    const message = `${emoji} [${label}] ${task.title}\nPriority: ${task.priority}\nAssigned: ${task.assigneeName}`;
-    try {
-      sendFonnteMessage(recipients.join(','), message);
-    } catch (err) {
-      Logger.log('Reminder failed for task %s: %s', task.id, err);
-    }
-  });
 
   if (reminderTargets && due.length > 0) {
     const byCategory = {};
