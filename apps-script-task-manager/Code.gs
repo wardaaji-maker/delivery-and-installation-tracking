@@ -932,3 +932,27 @@ function listOpenTaskCodesForTesting() {
     Logger.log('%s — %s (%s)', refCode(t.id), t.title, t.category);
   });
 }
+
+/**
+ * Diagnoses natural-language matching directly — edit TEST_MESSAGE to the
+ * exact text you sent in WhatsApp, click Run, and read the answer in the
+ * "Execution log" panel that appears right below the code (same panel that
+ * shows up automatically after any Run, no need to visit Executions or
+ * Groq's dashboard for this one).
+ */
+function diagnoseAIMatching() {
+  const TEST_MESSAGE = 'sudah beres tutup toko, semua sudah dimatikan'; // edit to match what you actually sent
+
+  const groqApiKey = PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY');
+  Logger.log('GROQ_API_KEY set? %s', !!groqApiKey);
+
+  const candidates = getOpenTasksForMatching();
+  Logger.log('Open tasks right now (%s): %s', candidates.length,
+    candidates.map((t) => refCode(t.id) + ' = "' + t.title + '"').join(', ') || '(none — this alone would explain nothing matching)');
+
+  if (!groqApiKey || candidates.length === 0) return;
+
+  const result = interpretReplyWithAI(TEST_MESSAGE, candidates, groqApiKey);
+  Logger.log('Message tested: "%s"', TEST_MESSAGE);
+  Logger.log('AI result: %s', result ? JSON.stringify(result) : 'null (not confidently matched to any open task — this is why nothing happened)');
+}
