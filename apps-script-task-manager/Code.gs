@@ -33,18 +33,32 @@
  *   WEBHOOK_SECRET    - required for reply-to-complete (see below): an
  *                       arbitrary string only you know, appended as
  *                       ?token=... to the webhook URL you give Fonnte.
+ *   GROQ_API_KEY      - optional, enables natural-language replies (see
+ *                       below). Get one at console.groq.com — this script
+ *                       never creates or manages that account for you.
  *
  * Reply-to-complete: every reminder line carries a short [CODE] tag (the
  * task's ID, shortened). Fonnte is configured (in its dashboard) to POST
  * incoming WhatsApp messages to this web app's URL; doPost() reads the
- * leading CODE + the rest of the message as a free-text completion report,
- * matches it to a task, and calls completeTask() — same as clicking "Done"
- * in the web app, just from WhatsApp. An attached photo is optional and, if
- * present, is saved to a Drive folder and linked on the task. See README
- * for the Fonnte-side webhook setup and the deployment-access tradeoff this
- * requires (the app must accept POSTs from Fonnte's servers, so "Anyone"
- * access — WEBHOOK_SECRET is what keeps that from being a fully open
- * endpoint).
+ * message and completes the matching task exactly like clicking "Done" in
+ * the web app — the rest of the message becomes the completion report, and
+ * an attached photo (optional) is saved to a Drive folder and linked on the
+ * task. Two ways a message gets matched to a task:
+ *   1. Starts with the exact [CODE] — free, instant, no AI involved
+ *      (regex match in handleIncomingWhatsAppMessage()).
+ *   2. Anything else, natural language, ONLY if GROQ_API_KEY is set —
+ *      interpretReplyWithAI() sends the message plus the list of
+ *      currently-open tasks to Groq (openai/gpt-oss-20b) and asks it to
+ *      pick which task (if any) is being reported done. This means every
+ *      non-code message sent in the group triggers an API call while this
+ *      is configured — accepted cost of "reply however you want" instead
+ *      of requiring the code. If the model isn't confident the message is
+ *      about one of the listed tasks, nothing happens (no reply, no
+ *      action) — ordinary chat is meant to pass through silently.
+ * See README for the Fonnte-side webhook setup and the deployment-access
+ * tradeoff this requires (the app must accept POSTs from Fonnte's servers,
+ * so "Anyone" access — WEBHOOK_SECRET is what keeps that from being a
+ * fully open endpoint).
  */
 
 const TASKS_SHEET_NAME = 'Tasks';
@@ -52,6 +66,9 @@ const PEOPLE_SHEET_NAME = 'People';
 const SCHEDULE_SHEET_NAME = 'Schedule';
 const SHIFT_TYPES_SHEET_NAME = 'ShiftTypes';
 const FONNTE_API_URL = 'https://api.fonnte.com/send';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+/** Small/cheap/fast — this only needs to pick a task from a short list and lightly clean up a sentence, not reason deeply. */
+const GROQ_MODEL = 'openai/gpt-oss-20b';
 
 const TASKS_HEADERS = [
   'ID', 'Title', 'Description', 'Priority', 'Category', 'Weekday',
@@ -550,6 +567,17 @@ function isScheduledToday(task, today, todayWeekday, todayDayOfMonth) {
   return false;
 }
 
+/** Whether GROQ_API_KEY is configured — i.e. natural-language replies (no code required) work, not just the exact-code shortcut. */
+function aiReplyEnabled() {
+  return !!PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY');
+}
+
+function replyInstructions(codeExample) {
+  return aiReplyEnabled()
+    ? `Reply here in your own words to mark it done (e.g. "sudah beres, tutup toko") — a photo is optional. You can also just type "${codeExample} what you did" if you prefer.`
+    : `Reply here with "${codeExample} what you did" to mark it done — a photo is optional.`;
+}
+
 /** Sends an immediate WhatsApp ping to REMINDER_TARGETS right now (used for Urgent tasks on creation) — group only, never a private number. */
 function notifyUrgentTaskNow(taskId) {
   const task = getTasks().find((t) => t.id === taskId);
@@ -559,7 +587,7 @@ function notifyUrgentTaskNow(taskId) {
   const emoji = PRIORITY_EMOJI[task.priority] || '⚪';
   const message = `${emoji} [URGENT] ${task.title} [${refCode(task.id)}]\nPriority: ${task.priority}\nAssigned: ${task.position} (${task.assigneeName})` +
     (task.description ? `\n${task.description}` : '') +
-    `\n\nReply here with "${refCode(task.id)} what you did" to mark it done — a photo is optional.`;
+    `\n\n${replyInstructions(refCode(task.id))}`;
   sendFonnteMessage(targets, message);
 }
 
@@ -599,7 +627,9 @@ function sendDailyReminders() {
       });
       return `*${cat}*\n${lines.join('\n')}`;
     });
-    const howTo = 'Reply with a task\'s code + what you did to mark it done, e.g. "8F3A21 closed the shop, swept floor" — a photo is optional.';
+    const howTo = aiReplyEnabled()
+      ? 'Reply in your own words to mark a task done (e.g. "sudah beres, tutup toko") — a photo is optional. You can also just type its code + what you did.'
+      : 'Reply with a task\'s code + what you did to mark it done, e.g. "8F3A21 closed the shop, swept floor" — a photo is optional.';
     const summary = `📋 Daily Task Summary — ${due.length} task(s) need attention:\n\n${sections.join('\n\n')}\n\n${howTo}`;
     try {
       sendFonnteMessage(reminderTargets, summary);
@@ -725,18 +755,107 @@ function findPersonByPhone(phone) {
   return getPeople().find((p) => normalizePhone(p.phone) === target) || null;
 }
 
+/** Active tasks not yet completed for their current occurrence — the candidate pool a reply (typed code or AI-matched) can resolve to. */
+function getOpenTasksForMatching() {
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  return getTasks().filter((t) => {
+    if (!t.active) return false;
+    if (t.category === 'One-time') return t.status !== 'Done';
+    return t.lastCompletedDate !== today;
+  });
+}
+
+/**
+ * Asks Groq to decide whether `text` is reporting completion of one of
+ * `candidates`, and if so which one + a cleaned-up note. Returns
+ * {code, note} or null (not confident / not about a task / API error).
+ * The returned code is always re-validated against `candidates` — the
+ * model can't complete a task that isn't actually in the list it was
+ * given, even if it hallucinates a code.
+ */
+function interpretReplyWithAI(text, candidates, apiKey) {
+  const list = candidates
+    .map((t) => `${refCode(t.id)} | ${t.title} | ${t.category} | ${t.position} (${t.assigneeName})`)
+    .join('\n');
+  const systemPrompt =
+    'You read one WhatsApp group message for a shop\'s task manager and decide whether it reports finishing one ' +
+    'of these open tasks (CODE | Title | Category | Position (Assignee)):\n' + list + '\n\n' +
+    'Reply with strict JSON only, no other text, matching exactly this shape: ' +
+    '{"matched": true or false, "code": "<one of the CODEs above, or null>", "note": "<short clean summary of what they said they did, in the same language they used, or null>"}. ' +
+    'Only set matched:true if the message clearly reports completing ONE specific task from the list above. ' +
+    'Casual chat, questions, greetings, or messages unrelated to these tasks must get matched:false.';
+
+  const response = UrlFetchApp.fetch(GROQ_API_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + apiKey },
+    payload: JSON.stringify({
+      model: GROQ_MODEL,
+      temperature: 0,
+      reasoning_effort: 'low',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: text },
+      ],
+    }),
+    muteHttpExceptions: true,
+  });
+
+  if (response.getResponseCode() !== 200) {
+    Logger.log('Groq API error %s: %s', response.getResponseCode(), response.getContentText());
+    return null;
+  }
+  const data = JSON.parse(response.getContentText());
+  const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!content) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err) {
+    Logger.log('Groq returned non-JSON content: %s', content);
+    return null;
+  }
+  if (!parsed.matched || !parsed.code) return null;
+
+  const code = String(parsed.code).toUpperCase();
+  if (candidates.every((t) => refCode(t.id) !== code)) return null; // hallucination guard
+  return { code: code, note: parsed.note ? String(parsed.note).trim() : '' };
+}
+
 function handleIncomingWhatsAppMessage(body) {
   const text = String(extractMessageText(body) || '').trim();
-  const match = text.match(/^([0-9A-Fa-f]{6})\b\s*([\s\S]*)$/);
-  if (!match) return; // Doesn't start with a task code — ordinary chat, ignore silently.
-
-  const code = match[1].toUpperCase();
-  const note = (match[2] || '').trim();
-  const task = getTasks().find((t) => refCode(t.id) === code);
+  if (!text) return;
 
   const reminderTargets = PropertiesService.getScriptProperties().getProperty('REMINDER_TARGETS');
+  const codeMatch = text.match(/^([0-9A-Fa-f]{6})\b\s*([\s\S]*)$/);
+
+  let code, note;
+  if (codeMatch) {
+    code = codeMatch[1].toUpperCase();
+    note = (codeMatch[2] || '').trim();
+  } else {
+    const groqApiKey = PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY');
+    if (!groqApiKey) return; // No code, no AI configured — ordinary chat, ignore silently.
+    const candidates = getOpenTasksForMatching();
+    if (candidates.length === 0) return;
+    let guess;
+    try {
+      guess = interpretReplyWithAI(text, candidates, groqApiKey);
+    } catch (err) {
+      Logger.log('interpretReplyWithAI failed: %s', err);
+      return;
+    }
+    if (!guess) return; // Not confidently about a task — stay silent, don't spam ordinary chat.
+    code = guess.code;
+    note = guess.note;
+  }
+
+  const task = getTasks().find((t) => refCode(t.id) === code);
   if (!task) {
-    if (reminderTargets) sendFonnteMessage(reminderTargets, `⚠️ No task found for code ${code}.`);
+    if (codeMatch && reminderTargets) sendFonnteMessage(reminderTargets, `⚠️ No task found for code ${code}.`);
     return;
   }
 

@@ -112,15 +112,28 @@ on who can complete a task.
   (or a comma-separated mix of numbers/groups) to control exactly who
   sees reminders.
 - **Reply-to-complete** (optional, needs the webhook setup below) —
-  every reminder line ends with a short `[CODE]` tag. Anyone replies
-  in the WhatsApp group with `CODE what I did` (e.g.
-  `8F3A21 closed the shop, swept floor`) and the matching task is
-  marked done, with everything after the code saved as that task's
-  completion report — same as typing it into the web app's "Done"
-  prompt, just from WhatsApp. A photo in the same message is optional;
-  if present, it's saved to a Google Drive folder ("Task Manager
-  Photos") and linked in the report. The group gets a confirmation
-  (`✅ <name> marked "<task>" done`) either way.
+  every reminder line ends with a short `[CODE]` tag. Reply in the
+  WhatsApp group and the matching task is marked done, with the rest of
+  what you wrote saved as that task's completion report — same as
+  typing it into the web app's "Done" prompt, just from WhatsApp. A
+  photo in the same message is optional; if present, it's saved to a
+  Google Drive folder ("Task Manager Photos") and linked in the report.
+  The group gets a confirmation (`✅ <name> marked "<task>" done`)
+  either way. Two ways to reply:
+  - **Exact code** (always works, free, instant): `CODE what I did`,
+    e.g. `8F3A21 closed the shop, swept floor`.
+  - **Natural language, no code needed** (needs `GROQ_API_KEY` — see
+    setup): just describe what you did, in whatever language/phrasing,
+    e.g. `sudah beres, tutup toko`. An AI call (via [Groq](https://groq.com))
+    picks which currently-open task you mean from the list and writes a
+    clean note. This means **every non-code message sent in the group
+    triggers an API call** while this is on — accepted cost of not
+    requiring the code. If it's not confident your message is about one
+    of the open tasks, it does nothing (no reply, no action) — that's
+    deliberate, so it doesn't spam replies to ordinary chat, but it also
+    means it can occasionally misfire (miss a real report, or — rarely —
+    match the wrong task). Skip `GROQ_API_KEY` to keep only the exact-code
+    path, which never has this ambiguity.
 
 ## Setup
 
@@ -150,6 +163,11 @@ on who can complete a task.
      `REMINDER_TARGETS` if not set.
    - `WEBHOOK_SECRET` (only if you want reply-to-complete — step 7) — any
      string you make up, e.g. a random 20-character password.
+   - `GROQ_API_KEY` (only if you want *natural-language* replies, on top
+     of reply-to-complete — also step 7) — sign up at
+     [console.groq.com](https://console.groq.com) (this script can't do
+     that part for you) and create an API key there. Leave this unset to
+     keep reply-to-complete working with just the exact-code shortcut.
 5. In the Apps Script editor, select the `createDailyTrigger` function
    in the toolbar dropdown and click **Run** once — this schedules
    `runDailyAutomation` to run every day at 08:00 (script timezone, set
@@ -180,6 +198,14 @@ on who can complete a task.
       instead of a name, or a photo doesn't get saved — open the logged
       JSON, find the real field name, and add it to the relevant
       `extractX()` function.
+   5. If you also set `GROQ_API_KEY`, send a follow-up test message
+      *without* a code — plain language describing finishing a real open
+      task. It should get matched and completed the same way. If it
+      doesn't react at all, check **Executions** for a
+      `Groq API error ...` log line (wrong/expired key, or a model name
+      that's been retired — `GROQ_MODEL` in `Code.gs` is currently
+      `openai/gpt-oss-20b`, Groq's current recommended small model as of
+      this writing).
 8. Open the **Team** tab first and add your people under each position
    — the identity picker, New Task Assignee dropdown, and Schedule tab
    all read from that roster.
@@ -240,3 +266,18 @@ on who can complete a task.
   identity model (see "Identity" above); reply-to-complete just also
   requires it to be true for unauthenticated *requests*, not just page
   views.
+- **Natural-language matching (`GROQ_API_KEY`) costs money and calls an
+  external AI, per non-code message sent in the group** — that's the
+  real tradeoff for not requiring the exact code. Groq's per-request
+  cost is small, but it's not zero, and a busy group means a steady
+  trickle of API calls even during ordinary chat (the model just
+  usually decides "not a task" and does nothing). If that's not
+  something you want running continuously, don't set `GROQ_API_KEY` —
+  the exact-code path still works fully without it, free.
+- The model used for natural-language matching
+  (`GROQ_MODEL` in `Code.gs`, currently `openai/gpt-oss-20b`) is a
+  Groq-hosted model ID, subject to Groq's own deprecation schedule
+  (check [console.groq.com/docs/deprecations](https://console.groq.com/docs/deprecations)
+  occasionally) — if replies silently stop being matched one day and
+  Executions shows a Groq API error, that's the likely cause; swap in
+  whatever Groq's current recommended small/fast model is at the time.
