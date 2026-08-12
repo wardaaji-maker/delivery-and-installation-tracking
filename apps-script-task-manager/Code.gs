@@ -899,3 +899,36 @@ function getTaskPhotosFolder() {
   const folders = DriveApp.getFoldersByName(name);
   return folders.hasNext() ? folders.next() : DriveApp.createFolder(name);
 }
+
+// ---------------------------------------------------------------------------
+// Manual test harness — run directly from the Apps Script editor's function
+// dropdown, no real WhatsApp message or Fonnte webhook round-trip needed.
+// WARNING: this has REAL side effects, same as an actual incoming message —
+// it marks a real task done and sends a real WhatsApp confirmation to
+// REMINDER_TARGETS. Point TEST_TASK_CODE at a throwaway test task, not a
+// real one, unless you want that real task marked done.
+// ---------------------------------------------------------------------------
+function runManualReplyTest() {
+  const TEST_TASK_CODE = 'REPLACE_ME'; // a real task's [CODE] from a reminder, or from refCode(taskId) in the Tasks sheet
+  const TEST_MESSAGE = TEST_TASK_CODE + ' closed the shop, swept the floor'; // try natural language instead (no code) if GROQ_API_KEY is set
+  const TEST_SENDER_PHONE = ''; // optional: a real phone number from People, to test name attribution
+  const TEST_IMAGE_URL = ''; // optional: any public https image URL, to test photo saving to Drive
+
+  const fakePayload = {
+    message: TEST_MESSAGE,
+    member: TEST_SENDER_PHONE,
+    sender: TEST_SENDER_PHONE,
+    url: TEST_IMAGE_URL,
+  };
+
+  Logger.log('Simulated incoming payload: %s', JSON.stringify(fakePayload));
+  handleIncomingWhatsAppMessage(fakePayload);
+  Logger.log('Done. Check: the Tasks sheet (task marked done?), your WhatsApp group (confirmation sent?), and Drive\'s "Task Manager Photos" folder if you set an image URL.');
+}
+
+/** Prints every open task's code — handy for filling in TEST_TASK_CODE above without hunting through the Sheet. */
+function listOpenTaskCodesForTesting() {
+  getOpenTasksForMatching().forEach((t) => {
+    Logger.log('%s — %s (%s)', refCode(t.id), t.title, t.category);
+  });
+}
