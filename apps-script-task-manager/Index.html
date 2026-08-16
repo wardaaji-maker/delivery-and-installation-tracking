@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      --urgent: #8b1e3f;
+      --high: #e5484d;
+      --medium: #f5a623;
+      --low: #30a46c;
+      --border: #e5e5e5;
+      --bg: #f5f6f8;
+      --ink: #1a1a1a;
+      --muted: #767676;
+      --accent: #2f5fe0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .app { max-width: 900px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+
+    .whoami {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .whoami .name { font-weight: 700; }
+    .whoami .pos { color: var(--muted); font-size: 12px; }
+    .whoami button { background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; padding: 16px;
+    }
+    .overlay.hidden { display: none; }
+    .overlay-card {
+      background: #fff; border-radius: 12px; padding: 20px;
+      max-width: 420px; width: 100%; max-height: 80vh; overflow-y: auto;
+    }
+    .overlay-card h2 { font-size: 16px; margin: 0 0 4px; }
+    .overlay-card p { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+    .person-pick-group { margin-bottom: 14px; }
+    .person-pick-group h4 { font-size: 12px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .03em; }
+    .person-pick {
+      display: block; width: 100%; text-align: left;
+      padding: 10px 12px; margin-bottom: 6px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: #fafafa; cursor: pointer; font-size: 14px; font-weight: 600;
+    }
+    .person-pick:hover { background: #eef2ff; border-color: var(--accent); }
+
+    nav.tabs {
+      display: flex; gap: 4px; background: #fff; border: 1px solid var(--border);
+      border-radius: 10px; padding: 4px; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    nav.tabs button {
+      flex: 1; min-width: 80px; padding: 9px 10px; border: none; background: transparent;
+      border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    nav.tabs button.active { background: var(--ink); color: #fff; }
+
+    .tabpanel { display: none; }
+    .tabpanel.active { display: block; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .stat { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
+    .stat .n { font-size: 22px; font-weight: 700; }
+    .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .card h2 { font-size: 15px; margin: 0 0 12px; }
+
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip {
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+      background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted);
+    }
+    .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    .filters select { width: auto; }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%; padding: 8px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 14px; font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 44px; }
+    form.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    form.grid .full { grid-column: 1 / -1; }
+
+    .weekday-checks { display: flex; gap: 10px; flex-wrap: wrap; }
+    .weekday-checks label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink); margin: 0; }
+    .weekday-checks input { width: auto; }
+
+    button.btn { cursor: pointer; border: none; border-radius: 6px; padding: 9px 14px; font-size: 14px; font-weight: 600; }
+    .btn-primary { background: var(--ink); color: #fff; }
+    .btn-secondary { background: #eee; color: var(--ink); }
+    .btn-danger { background: #fdecea; color: var(--high); }
+    .btn-small { padding: 6px 10px; font-size: 12px; }
+
+    .task {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+      padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+      margin-bottom: 8px; background: #fff;
+    }
+    .task.faded { opacity: 0.55; }
+    .task-main { flex: 1; min-width: 0; }
+    .task-title { font-weight: 600; font-size: 14px; }
+    .task-title.done { text-decoration: line-through; }
+    .task-desc { font-size: 13px; color: #555; margin-top: 2px; white-space: pre-wrap; }
+    .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+    .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; }
+    .badge.Urgent { background: var(--urgent); }
+    .badge.High { background: var(--high); }
+    .badge.Medium { background: var(--medium); }
+    .badge.Low { background: var(--low); }
+    .badge.overdue { background: var(--high); }
+    .badge.today { background: #ff8a3d; }
+    .badge.upcoming { background: #999; }
+    .badge.done { background: var(--low); }
+    .badge.category { background: var(--accent); }
+    .muted-text { font-size: 12px; color: var(--muted); }
+    .report { font-size: 12px; color: #2b6e4a; background: #eefaf1; border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
+    .actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 130px; }
+    .empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+
+    .position-group { margin-bottom: 18px; }
+    .position-group h3 { font-size: 14px; margin: 0 0 8px; }
+    .person-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .person-row:last-child { border-bottom: none; }
+    .person-row input[type=text] { flex: 1; }
+    .person-row input[type=checkbox] { width: auto; }
+    .add-person-row { display: flex; gap: 8px; margin-top: 10px; }
+    .add-person-row input { flex: 1; }
+
+    .hint { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 4px; }
+
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; font-size: 11px; color: var(--muted); }
+    .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.1); }
+    .schedule-grid-wrap { overflow-x: auto; }
+    table.schedule-grid { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 12px; }
+    table.schedule-grid th, table.schedule-grid td {
+      border: 1px solid var(--border); padding: 4px; text-align: center; white-space: nowrap;
+    }
+    table.schedule-grid th { background: #fafafa; font-size: 11px; }
+    table.schedule-grid th .wd { display: block; font-weight: 700; }
+    table.schedule-grid th .dt { display: block; font-weight: 400; color: var(--muted); }
+    table.schedule-grid td.staff-name { text-align: left; font-weight: 600; position: sticky; left: 0; background: #fff; }
+    table.schedule-grid th.today, table.schedule-grid td.today-col { background: #eef2ff; }
+    table.schedule-grid select { border: none; text-align: center; font-size: 12px; font-weight: 600; padding: 5px 2px; border-radius: 4px; }
+    table.schedule-grid .cell-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: 600; min-width: 40px; }
+
+    .shift-type-manager { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .shift-type-manager h3 { font-size: 13px; margin: 0 0 8px; }
+    .shift-type-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+    .shift-type-row input[type=text] { flex: 1; }
+    .shift-type-row input[type=color] { width: 34px; padding: 2px; height: 30px; flex: none; }
+    .shift-type-row .code-input { max-width: 80px; flex: none; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>📋 Task Manager</h1>
+    <p class="subtitle">Showroom Manager → Showroom Manager Partner → Product Consultant</p>
+
+    <div class="whoami">
+      <div>
+        You are: <span class="name" id="whoamiName">—</span>
+        <span class="pos" id="whoamiPos"></span>
+      </div>
+      <div>
+        <button type="button" id="whoamiPinBtn" style="display:none;" onclick="setMyPin()"></button>
+        <button type="button" onclick="showIdentityOverlay()">Switch user</button>
+      </div>
+    </div>
+
+    <nav class="tabs">
+      <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="newtask">New Task</button>
+      <button data-tab="schedule">Schedule</button>
+      <button data-tab="team">Team</button>
+    </nav>
+
+    <section id="tab-dashboard" class="tabpanel active">
+      <div class="stats">
+        <div class="stat"><div class="n" id="statDueToday">0</div><div class="l">Due today</div></div>
+        <div class="stat"><div class="n" id="statOverdue">0</div><div class="l">Overdue</div></div>
+        <div class="stat"><div class="n" id="statHigh">0</div><div class="l">Urgent/High pending</div></div>
+      </div>
+
+      <div class="card">
+        <div class="chips" id="categoryChips"></div>
+        <div class="filters">
+          <select id="filterPosition"><option value="">All positions</option></select>
+          <select id="filterPriority">
+            <option value="">All priorities</option>
+            <option value="Urgent">Urgent</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">
+            <input type="checkbox" id="filterShowPaused" style="width:auto;"> Show paused
+          </label>
+        </div>
+        <div id="taskList"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
+
+    <section id="tab-newtask" class="tabpanel">
+      <div class="card">
+        <h2>Create a task</h2>
+        <form class="grid" id="taskForm">
+          <div class="full">
+            <label>Title</label>
+            <input type="text" id="title" required>
+          </div>
+          <div class="full">
+            <label>Description</label>
+            <textarea id="description"></textarea>
+          </div>
+          <div>
+            <label>Priority</label>
+            <select id="priority"></select>
+          </div>
+          <div>
+            <label>Category</label>
+            <select id="category"></select>
+          </div>
+          <div class="full" id="weeklyField" style="display:none;">
+            <label>Which day(s) of the week</label>
+            <div class="weekday-checks" id="weekdayChecks"></div>
+          </div>
+          <div class="full" id="monthlyField" style="display:none;">
+            <label>Which day of the month</label>
+            <input type="number" id="dayOfMonth" min="1" max="31">
+          </div>
+          <div class="full" id="oneTimeField" style="display:none;">
+            <label>Due date</label>
+            <input type="date" id="dueDate">
+          </div>
+          <div>
+            <label>Position</label>
+            <select id="position"></select>
+          </div>
+          <div>
+            <label>Assignee</label>
+            <select id="assigneeName"></select>
+          </div>
+          <div class="full">
+            <button type="submit" class="btn btn-primary">Add task</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="tab-schedule" class="tabpanel">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <h2 style="margin:0;">Showroom schedule</h2>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button type="button" class="btn btn-secondary btn-small" onclick="shiftWeek(-1)">‹ Prev</button>
+            <span class="muted-text" id="weekLabel" style="min-width:150px;text-align:center;"></span>
+            <button type="button" class="btn btn-secondary btn-small" onclick="shiftWeek(1)">Next ›</button>
+            <button type="button" class="btn btn-secondary btn-small" onclick="goToThisWeek()">This week</button>
+          </div>
+        </div>
+        <p class="hint" id="scheduleHint"></p>
+        <div class="legend" id="scheduleLegend"></div>
+        <div class="schedule-grid-wrap">
+          <table class="schedule-grid" id="scheduleGrid"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
+        </div>
+        <div id="shiftTypesManager"></div>
+      </div>
+    </section>
+
+    <section id="tab-team" class="tabpanel">
+      <div class="card" id="teamCard">
+        <h2>Team</h2>
+        <div id="teamList"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay hidden" id="identityOverlay">
+    <div class="overlay-card">
+      <h2>Who are you?</h2>
+      <p>Pick your name — this device will remember it. Manager/Partner names with a 🔒 need their PIN.</p>
+      <div id="identityList"></div>
+      <button type="button" class="btn btn-secondary btn-small" style="margin-top:10px;" onclick="skipIdentity()">Skip for now — just browsing</button>
+    </div>
+  </div>
+
+  <script>
+    const PERSON_STORAGE_KEY = 'tm_person_id';
+    let config = { positions: [], managerPositions: [], teamAdminPositions: [], categories: [], priorities: [], weekdays: [] };
+    let allTasks = [];
+    let allPeople = [];
+    let allSchedule = [];
+    let currentPerson = null;
+    let activeCategory = 'All';
+
+    // Local-date formatting (not toISOString/UTC) so "today" matches the
+    // device's own timezone instead of potentially being a day off.
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function localDateStr(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+    function todayStr() { return localDateStr(new Date()); }
+    function todayWeekdayName() {
+      return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+    }
+    function todayDayOfMonth() { return new Date().getDate(); }
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function isManager(person) {
+      return !!person && config.managerPositions.indexOf(person.position) !== -1;
+    }
+    /** Narrower than isManager() — Team roster access is Showroom Manager only, not Partner. */
+    function isTeamAdmin(person) {
+      return !!person && config.teamAdminPositions.indexOf(person.position) !== -1;
+    }
+
+    // ---- tabs ----
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tabpanel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ---- identity ----
+    function showIdentityOverlay() {
+      const list = document.getElementById('identityList');
+      const anyone = allPeople.some(p => p.active);
+      const roster = config.positions.map(pos => {
+        const people = allPeople.filter(p => p.position === pos && p.active);
+        if (people.length === 0) return '';
+        return `
+          <div class="person-pick-group">
+            <h4>${pos}</h4>
+            ${people.map(p => `<button type="button" class="person-pick" onclick="selectIdentity('${p.id}')">${escapeHtml(p.name)}${isManager(p) && p.hasPin ? ' 🔒' : ''}</button>`).join('')}
+          </div>
+        `;
+      }).join('');
+      list.innerHTML = anyone
+        ? roster
+        : `<div class="empty">No one in the Team tab yet.</div>
+           <button type="button" class="btn btn-primary btn-small" onclick="skipIdentityToTeam()">Go add people in Team →</button>`;
+      document.getElementById('identityOverlay').classList.remove('hidden');
+    }
+
+    /** Lets you browse without picking an identity yet — e.g. to add yourself in Team first. */
+    function skipIdentity() {
+      hideIdentityOverlay();
+    }
+
+    function skipIdentityToTeam() {
+      hideIdentityOverlay();
+      document.querySelector('nav.tabs button[data-tab="team"]').click();
+    }
+
+    function hideIdentityOverlay() {
+      document.getElementById('identityOverlay').classList.add('hidden');
+    }
+
+    function selectIdentity(personId) {
+      const person = allPeople.find(p => p.id === personId);
+      if (!person) return;
+      if (isManager(person) && person.hasPin) {
+        const pin = prompt('Enter PIN for ' + person.name + ':');
+        if (pin === null) return; // cancelled
+        google.script.run.withSuccessHandler(ok => {
+          if (!ok) { alert('Incorrect PIN.'); return; }
+          finalizeIdentity(person);
+        }).verifyPin(personId, pin);
+        return;
+      }
+      finalizeIdentity(person);
+    }
+
+    function finalizeIdentity(person) {
+      currentPerson = person;
+      localStorage.setItem(PERSON_STORAGE_KEY, person.id);
+      updateWhoAmI();
+      hideIdentityOverlay();
+      renderSchedule();
+    }
+
+    function updateWhoAmI() {
+      document.getElementById('whoamiName').textContent = currentPerson ? currentPerson.name : 'Not selected';
+      document.getElementById('whoamiPos').textContent = currentPerson ? '(' + currentPerson.position + ')' : '';
+      const pinBtn = document.getElementById('whoamiPinBtn');
+      if (currentPerson && isManager(currentPerson)) {
+        pinBtn.style.display = 'inline';
+        pinBtn.textContent = currentPerson.hasPin ? 'Change PIN' : '🔒 Secure with a PIN';
+      } else {
+        pinBtn.style.display = 'none';
+      }
+    }
+
+    /** A Manager/Partner sets or changes the PIN on their own picked identity, so no one else can pick it. */
+    function setMyPin() {
+      if (!currentPerson) return;
+      if (currentPerson.hasPin) {
+        const current = prompt('Enter your current PIN to change it:');
+        if (current === null) return;
+        google.script.run.withSuccessHandler(ok => {
+          if (!ok) { alert('Incorrect current PIN.'); return; }
+          promptNewPin();
+        }).verifyPin(currentPerson.id, current);
+      } else {
+        promptNewPin();
+      }
+    }
+
+    function promptNewPin() {
+      const pin = prompt('Set a new PIN (4+ digits):');
+      if (pin === null) return;
+      if (pin.trim().length < 4) { alert('PIN should be at least 4 digits.'); return; }
+      google.script.run.withSuccessHandler(loadPeople).setPersonPin(currentPerson.id, pin.trim());
+    }
+
+    function resolveIdentity() {
+      const savedId = localStorage.getItem(PERSON_STORAGE_KEY);
+      const person = savedId && allPeople.find(p => p.id === savedId && p.active);
+      if (person) {
+        currentPerson = person;
+        updateWhoAmI();
+        hideIdentityOverlay();
+      } else {
+        currentPerson = null;
+        updateWhoAmI();
+        showIdentityOverlay();
+      }
+    }
+
+    // ---- bootstrap ----
+    google.script.run.withSuccessHandler(cfg => {
+      config = cfg;
+
+      document.getElementById('categoryChips').innerHTML = ['All'].concat(cfg.categories).map(c =>
+        `<button type="button" class="chip ${c === 'All' ? 'active' : ''}" data-cat="${c}">${c}</button>`
+      ).join('');
+      document.querySelectorAll('#categoryChips .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          activeCategory = chip.dataset.cat;
+          document.querySelectorAll('#categoryChips .chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          renderTasks();
+        });
+      });
+
+      document.getElementById('priority').innerHTML = cfg.priorities.map(p => `<option value="${p}" ${p === 'Medium' ? 'selected' : ''}>${p}</option>`).join('');
+      document.getElementById('category').innerHTML = cfg.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+      document.getElementById('weekdayChecks').innerHTML = cfg.weekdays.map(w =>
+        `<label><input type="checkbox" value="${w}"> ${w}</label>`
+      ).join('');
+      document.getElementById('position').innerHTML = cfg.positions.map(p => `<option value="${p}">${p}</option>`).join('');
+      document.getElementById('filterPosition').innerHTML += cfg.positions.map(p => `<option value="${p}">${p}</option>`).join('');
+      onCategoryChange();
+      onPositionChange();
+
+      google.script.run.withSuccessHandler(people => {
+        allPeople = people;
+        resolveIdentity();
+        renderTeam();
+        onPositionChange();
+        loadTasks();
+        loadShiftTypes();
+        loadSchedule();
+      }).getPeople();
+    }).getConfig();
+
+    document.getElementById('category').addEventListener('change', onCategoryChange);
+    document.getElementById('position').addEventListener('change', onPositionChange);
+    document.getElementById('filterPosition').addEventListener('change', renderTasks);
+    document.getElementById('filterPriority').addEventListener('change', renderTasks);
+    document.getElementById('filterShowPaused').addEventListener('change', renderTasks);
+
+    function onCategoryChange() {
+      const cat = document.getElementById('category').value;
+      document.getElementById('weeklyField').style.display = cat === 'Weekly' ? 'block' : 'none';
+      document.getElementById('monthlyField').style.display = cat === 'Monthly' ? 'block' : 'none';
+      document.getElementById('oneTimeField').style.display = cat === 'One-time' ? 'block' : 'none';
+    }
+
+    function onPositionChange() {
+      const pos = document.getElementById('position').value;
+      const roster = allPeople.filter(p => p.position === pos && p.active);
+      const select = document.getElementById('assigneeName');
+      select.innerHTML = '<option value="All">All (everyone in this position)</option>' +
+        roster.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+    }
+
+    // ---- tasks ----
+    function loadTasks() {
+      google.script.run.withSuccessHandler(tasks => { allTasks = tasks; renderTasks(); }).getTasks();
+    }
+
+    function scheduleLabel(t) {
+      if (t.category === 'Daily Routine') return 'Every day';
+      if (t.category === 'Weekly') return 'Every ' + t.weekday;
+      if (t.category === 'Monthly') return 'Day ' + t.dayOfMonth + ' of month';
+      return 'Due ' + (t.dueDate || '—');
+    }
+
+    function occurrence(t) {
+      const today = todayStr();
+      if (t.category === 'One-time') {
+        if (t.status === 'Done') return { label: 'Done', cls: 'done', isDone: true, isDueToday: false, isOverdue: false };
+        if (t.dueDate && t.dueDate < today) return { label: 'Overdue', cls: 'overdue', isDone: false, isDueToday: true, isOverdue: true };
+        if (t.dueDate === today) return { label: 'Due today', cls: 'today', isDone: false, isDueToday: true, isOverdue: false };
+        return { label: 'Upcoming', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
+      }
+      const weekdayList = String(t.weekday || '').split(',').map(s => s.trim());
+      const dayOfMonthList = String(t.dayOfMonth || '').split(',').map(s => s.trim());
+      const scheduledToday =
+        t.category === 'Daily Routine' ||
+        (t.category === 'Weekly' && weekdayList.indexOf(todayWeekdayName()) !== -1) ||
+        (t.category === 'Monthly' && dayOfMonthList.indexOf(String(todayDayOfMonth())) !== -1);
+      const doneToday = t.lastCompletedDate === today;
+      if (!t.active) return { label: 'Paused', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
+      if (doneToday) return { label: 'Done today', cls: 'done', isDone: true, isDueToday: scheduledToday, isOverdue: false };
+      if (scheduledToday) return { label: 'Due today', cls: 'today', isDone: false, isDueToday: true, isOverdue: false };
+      return { label: 'Not today', cls: 'upcoming', isDone: false, isDueToday: false, isOverdue: false };
+    }
+
+    function renderTasks() {
+      const posFilter = document.getElementById('filterPosition').value;
+      const prioFilter = document.getElementById('filterPriority').value;
+      const showPaused = document.getElementById('filterShowPaused').checked;
+
+      let tasks = allTasks.filter(t =>
+        (activeCategory === 'All' || t.category === activeCategory) &&
+        (!posFilter || t.position === posFilter) &&
+        (!prioFilter || t.priority === prioFilter) &&
+        (showPaused || t.active)
+      );
+
+      const PRIORITY_ORDER = { Urgent: -1, High: 0, Medium: 1, Low: 2 };
+      tasks.sort((a, b) => {
+        const oa = occurrence(a), ob = occurrence(b);
+        if (oa.isDone !== ob.isDone) return oa.isDone ? 1 : -1;
+        const p = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
+        if (p !== 0) return p;
+        return a.title.localeCompare(b.title);
+      });
+
+      let dueToday = 0, overdue = 0, highPending = 0;
+      allTasks.filter(t => t.active).forEach(t => {
+        const o = occurrence(t);
+        if (o.isDueToday && !o.isDone) dueToday++;
+        if (o.isOverdue) overdue++;
+        if (o.isDueToday && !o.isDone && (t.priority === 'High' || t.priority === 'Urgent')) highPending++;
+      });
+      document.getElementById('statDueToday').textContent = dueToday;
+      document.getElementById('statOverdue').textContent = overdue;
+      document.getElementById('statHigh').textContent = highPending;
+
+      const list = document.getElementById('taskList');
+      if (tasks.length === 0) {
+        list.innerHTML = '<div class="empty">No tasks match this filter.</div>';
+        return;
+      }
+
+      list.innerHTML = tasks.map(t => {
+        const o = occurrence(t);
+        const isRecurring = t.category !== 'One-time';
+        const doneToggleBtn = o.isDone
+          ? `<button type="button" class="btn btn-secondary btn-small" onclick="reopenTaskFlow('${t.id}')">Reopen</button>`
+          : `<button type="button" class="btn btn-secondary btn-small" onclick="completeTaskFlow('${t.id}')">${isRecurring ? 'Done today' : 'Done'}</button>`;
+        const startBtn = (!isRecurring && t.status === 'Pending')
+          ? `<button type="button" class="btn btn-secondary btn-small" onclick="setStatus('${t.id}','In Progress')">Start</button>` : '';
+        const pauseBtn = isRecurring
+          ? (t.active
+              ? `<button type="button" class="btn btn-secondary btn-small" onclick="setActive('${t.id}',false)">Pause</button>`
+              : `<button type="button" class="btn btn-secondary btn-small" onclick="setActive('${t.id}',true)">Resume</button>`)
+          : '';
+        const report = (o.isDone && t.completedBy)
+          ? `<div class="report">✓ Done by ${escapeHtml(t.completedBy)}${t.completionNote ? ': ' + escapeHtml(t.completionNote) : ''}</div>`
+          : '';
+
+        return `
+          <div class="task ${o.isDone || !t.active ? 'faded' : ''}">
+            <div class="task-main">
+              <div class="task-title ${o.isDone ? 'done' : ''}">${escapeHtml(t.title)}</div>
+              ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
+              <div class="meta">
+                <span class="badge category">${t.category}</span>
+                <span class="badge ${t.priority}">${t.priority}</span>
+                <span class="badge ${o.cls}">${o.label}</span>
+                <span class="muted-text">${scheduleLabel(t)}</span>
+                <span class="muted-text">→ ${escapeHtml(t.position || '—')}${t.assigneeName ? ' / ' + escapeHtml(t.assigneeName) : ''}</span>
+              </div>
+              ${report}
+            </div>
+            <div class="actions">
+              ${doneToggleBtn}
+              ${startBtn}
+              ${pauseBtn}
+              <button type="button" class="btn btn-danger btn-small" onclick="removeTask('${t.id}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setStatus(id, status) { google.script.run.withSuccessHandler(loadTasks).updateTaskStatus(id, status); }
+
+    function completeTaskFlow(id) {
+      if (!currentPerson) { showIdentityOverlay(); return; }
+      const note = prompt('Quick report (optional) — what did you do?') || '';
+      google.script.run.withSuccessHandler(loadTasks).completeTask(id, currentPerson.id, note);
+    }
+
+    function reopenTaskFlow(id) {
+      google.script.run.withSuccessHandler(loadTasks).reopenTask(id);
+    }
+
+    function setActive(id, active) { google.script.run.withSuccessHandler(loadTasks).setTaskActive(id, active); }
+    function removeTask(id) {
+      if (!confirm('Delete this task?')) return;
+      google.script.run.withSuccessHandler(loadTasks).deleteTask(id);
+    }
+
+    document.getElementById('taskForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const category = document.getElementById('category').value;
+      const weekday = Array.from(document.querySelectorAll('#weekdayChecks input:checked')).map(el => el.value);
+      const task = {
+        title: document.getElementById('title').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        priority: document.getElementById('priority').value,
+        category: category,
+        weekday: weekday,
+        dayOfMonth: document.getElementById('dayOfMonth').value,
+        dueDate: document.getElementById('dueDate').value,
+        position: document.getElementById('position').value,
+        assigneeName: document.getElementById('assigneeName').value,
+      };
+      if (!task.title) return;
+      if (category === 'Weekly' && weekday.length === 0) { alert('Pick at least one day of the week.'); return; }
+      google.script.run.withSuccessHandler(() => {
+        e.target.reset();
+        document.getElementById('priority').value = 'Medium';
+        document.querySelectorAll('#weekdayChecks input').forEach(el => el.checked = false);
+        onCategoryChange();
+        onPositionChange();
+        loadTasks();
+      }).addTask(task);
+    });
+
+    // ---- schedule ----
+    // Mirrors the weekly grid you share to the WhatsApp group: staff as rows,
+    // Mon–Sun as columns, each cell a shift code. The codes themselves (P,
+    // S, M, OFF, CUTI, ...) are managed in Team → "Manage shift types" —
+    // seeded with those defaults but fully editable/addable/removable.
+    let allShiftTypes = [];
+    const OTHER_SHIFT_COLOR = '#e0e0e0';
+
+    function shiftTypeList() {
+      return [{ code: '', label: '—', color: '#ffffff' }].concat(allShiftTypes.filter((s) => s.active));
+    }
+
+    function shiftColor(code) {
+      const match = shiftTypeList().find((s) => s.code === code);
+      if (match) return match.color;
+      return code ? OTHER_SHIFT_COLOR : '#ffffff';
+    }
+
+    function loadShiftTypes() {
+      google.script.run.withSuccessHandler(types => {
+        allShiftTypes = types;
+        renderSchedule();
+      }).getShiftTypes();
+    }
+
+    let scheduleWeekOffset = 0; // 0 = week containing today
+
+    function mondayOf(date) {
+      const d = new Date(date);
+      const day = d.getDay(); // 0=Sun..6=Sat
+      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      return d;
+    }
+
+    function currentWeekDates() {
+      const base = new Date();
+      base.setDate(base.getDate() + scheduleWeekOffset * 7);
+      const monday = mondayOf(base);
+      const dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(d.getDate() + i);
+        dates.push(localDateStr(d));
+      }
+      return dates;
+    }
+
+    function shiftWeek(delta) { scheduleWeekOffset += delta; loadSchedule(); }
+    function goToThisWeek() { scheduleWeekOffset = 0; loadSchedule(); }
+
+    function loadSchedule() {
+      const dates = currentWeekDates();
+      google.script.run.withSuccessHandler(entries => {
+        allSchedule = entries;
+        renderSchedule();
+      }).getSchedule(dates[0], dates[6]);
+    }
+
+    function renderSchedule() {
+      const hint = document.getElementById('scheduleHint');
+      const manager = isManager(currentPerson);
+      hint.textContent = manager
+        ? 'Click a cell to set a shift for that day — saves immediately.'
+        : 'Read-only — ask a Showroom Manager or Partner to change the schedule.';
+
+      const shiftTypes = shiftTypeList();
+      document.getElementById('scheduleLegend').innerHTML = shiftTypes.filter(s => s.code).map((s) =>
+        `<span><span class="sw" style="background:${s.color};"></span>${s.code} = ${s.label}</span>`
+      ).join('');
+      renderShiftTypesManager(manager);
+
+      const dates = currentWeekDates();
+      const weekdayAbbr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      document.getElementById('weekLabel').textContent = dates[0] + ' → ' + dates[6];
+
+      const roster = allPeople.filter((p) => p.active);
+      const today = todayStr();
+      const knownCodes = shiftTypes.map((s) => s.code);
+
+      const head = '<tr><th>Staff</th>' + dates.map((date) => {
+        const d = new Date(date + 'T00:00:00');
+        return `<th class="${date === today ? 'today' : ''}"><span class="wd">${weekdayAbbr[d.getDay()]}</span><span class="dt">${date.slice(5)}</span></th>`;
+      }).join('') + '</tr>';
+
+      let body;
+      if (roster.length === 0) {
+        body = `<tr><td colspan="${dates.length + 1}" class="empty">No active people in Team yet.</td></tr>`;
+      } else {
+        body = roster.map((p) => {
+          const cells = dates.map((date) => {
+            const entry = allSchedule.find((e) => e.date === date && e.staffName === p.name);
+            const code = entry ? entry.shiftNote : '';
+            const color = shiftColor(code);
+            const cls = date === today ? 'today-col' : '';
+            if (!manager) {
+              return `<td class="${cls}">${code ? `<span class="cell-badge" style="background:${color};">${escapeHtml(code)}</span>` : ''}</td>`;
+            }
+            const isCustom = !!code && knownCodes.indexOf(code) === -1;
+            const options = shiftTypes.map((s) =>
+              `<option value="${s.code}" ${!isCustom && s.code === code ? 'selected' : ''}>${s.code || '—'}</option>`
+            ).join('') + `<option value="__other__" ${isCustom ? 'selected' : ''}>${isCustom ? escapeHtml(code) : 'Other…'}</option>`;
+            return `<td class="${cls}"><select data-date="${date}" data-staff="${escapeHtml(p.name)}" style="background:${color};" onchange="onShiftCellChange(this)">${options}</select></td>`;
+          }).join('');
+          return `<tr><td class="staff-name">${escapeHtml(p.name)}</td>${cells}</tr>`;
+        }).join('');
+      }
+
+      document.getElementById('scheduleGrid').innerHTML = '<thead>' + head + '</thead><tbody>' + body + '</tbody>';
+    }
+
+    function onShiftCellChange(select) {
+      const date = select.dataset.date;
+      const staffName = select.dataset.staff;
+      if (!currentPerson) { showIdentityOverlay(); renderSchedule(); return; }
+
+      let code = select.value;
+      if (code === '__other__') {
+        const custom = (prompt('Custom shift code (e.g. DKB PAGI):', '') || '').trim().toUpperCase();
+        if (!custom) { renderSchedule(); return; }
+        code = custom;
+      }
+
+      const existing = allSchedule.find((e) => e.date === date && e.staffName === staffName);
+      const onError = (err) => { alert(err.message || err); loadSchedule(); };
+
+      if (!code) {
+        if (existing) {
+          google.script.run.withSuccessHandler(loadSchedule).withFailureHandler(onError)
+            .deleteScheduleEntry(currentPerson.id, existing.id);
+        } else {
+          renderSchedule();
+        }
+        return;
+      }
+      if (existing) {
+        google.script.run.withSuccessHandler(loadSchedule).withFailureHandler(onError)
+          .updateScheduleEntry(currentPerson.id, existing.id, { shiftNote: code });
+      } else {
+        google.script.run.withSuccessHandler(loadSchedule).withFailureHandler(onError)
+          .addScheduleEntry(currentPerson.id, { date: date, staffName: staffName, shiftNote: code });
+      }
+    }
+
+    /** Lets a Manager/Partner define their own shift codes (beyond the seeded P/S/M/OFF/CUTI) before using them in the grid. */
+    function renderShiftTypesManager(manager) {
+      const container = document.getElementById('shiftTypesManager');
+      if (!manager) { container.innerHTML = ''; return; }
+
+      const rows = allShiftTypes.map((s) => `
+        <div class="shift-type-row">
+          <input type="text" class="code-input" value="${escapeHtml(s.code)}" onchange="saveShiftType('${s.id}', {code: this.value})">
+          <input type="text" value="${escapeHtml(s.label)}" onchange="saveShiftType('${s.id}', {label: this.value})" placeholder="Label">
+          <input type="color" value="${s.color}" onchange="saveShiftType('${s.id}', {color: this.value})">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+            <input type="checkbox" ${s.active ? 'checked' : ''} onchange="saveShiftType('${s.id}', {active: this.checked})"> Active
+          </label>
+          <button type="button" class="btn btn-danger btn-small" onclick="removeShiftType('${s.id}')">Delete</button>
+        </div>
+      `).join('') || '<div class="empty">No shift types yet.</div>';
+
+      container.innerHTML = `
+        <div class="shift-type-manager">
+          <h3>Manage shift types</h3>
+          <p class="hint">These are the codes selectable in each schedule cell.</p>
+          ${rows}
+          <div class="shift-type-row">
+            <input type="text" class="code-input" id="newShiftCode" placeholder="Code">
+            <input type="text" id="newShiftLabel" placeholder="Label">
+            <input type="color" id="newShiftColor" value="#e0e0e0">
+            <button type="button" class="btn btn-secondary btn-small" onclick="addShiftTypeFlow()">Add shift type</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function addShiftTypeFlow() {
+      const codeInput = document.getElementById('newShiftCode');
+      const labelInput = document.getElementById('newShiftLabel');
+      const colorInput = document.getElementById('newShiftColor');
+      const code = codeInput.value.trim();
+      if (!code) return;
+      google.script.run.withSuccessHandler(() => {
+        codeInput.value = ''; labelInput.value = ''; colorInput.value = '#e0e0e0';
+        loadShiftTypes();
+      }).withFailureHandler(err => alert(err.message || err))
+        .addShiftType(requesterId(), { code: code, label: labelInput.value.trim(), color: colorInput.value });
+    }
+
+    function saveShiftType(id, patch) {
+      google.script.run.withSuccessHandler(loadShiftTypes).withFailureHandler(err => { alert(err.message || err); loadShiftTypes(); })
+        .updateShiftType(requesterId(), id, patch);
+    }
+
+    function removeShiftType(id) {
+      if (!confirm('Delete this shift type? Existing schedule cells using it will show as a custom code.')) return;
+      google.script.run.withSuccessHandler(loadShiftTypes).withFailureHandler(err => alert(err.message || err))
+        .deleteShiftType(requesterId(), id);
+    }
+
+    // ---- team ----
+    /** No active Showroom Manager exists yet -> Team stays open so the first one can be created. */
+    function isTeamBootstrapping() {
+      return !allPeople.some(p => isTeamAdmin(p) && p.active);
+    }
+
+    /** Team roster is Showroom Manager only — Partner has schedule access but not this. */
+    function canEditTeam() {
+      return isTeamBootstrapping() || isTeamAdmin(currentPerson);
+    }
+
+    function requesterId() { return currentPerson ? currentPerson.id : null; }
+
+    function renderTeam() {
+      const container = document.getElementById('teamList');
+      const editable = canEditTeam();
+      const hint = editable
+        ? (isTeamBootstrapping() ? 'No Showroom Manager yet — Team is open until the first one is added.' : 'You can add, edit, or remove people below.')
+        : 'Read-only — only a Showroom Manager can update the team.';
+
+      container.innerHTML = `<p class="hint">${hint}</p>` + config.positions.map(pos => {
+        const roster = allPeople.filter(p => p.position === pos);
+        const rows = roster.map(p => {
+          if (!editable) {
+            return `
+              <div class="person-row">
+                <span style="flex:1;">${escapeHtml(p.name)}${isManager(p) && p.hasPin ? ' 🔒' : ''}</span>
+                <span class="muted-text">${p.active ? 'Active' : 'Inactive'}</span>
+              </div>
+            `;
+          }
+          const resetPinBtn = (isManager(p) && p.hasPin && !(currentPerson && currentPerson.id === p.id))
+            ? `<button type="button" class="btn btn-secondary btn-small" onclick="resetPersonPin('${p.id}')" title="Clear this person's forgotten PIN">Reset PIN</button>`
+            : '';
+          return `
+            <div class="person-row">
+              <input type="text" value="${escapeHtml(p.name)}" onchange="savePerson('${p.id}', this.value, null)" placeholder="Name">
+              <input type="text" value="${escapeHtml(p.phone)}" onchange="savePerson('${p.id}', null, this.value)" placeholder="62812xxxxxxx">
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+                <input type="checkbox" ${p.active ? 'checked' : ''} onchange="setPersonActive('${p.id}', this.checked)"> Active
+              </label>
+              ${resetPinBtn}
+              <button type="button" class="btn btn-danger btn-small" onclick="removePerson('${p.id}')">Delete</button>
+            </div>
+          `;
+        }).join('') || '<div class="empty">No one added yet.</div>';
+
+        const addRow = editable ? `
+          <div class="add-person-row">
+            <input type="text" id="newName-${cssId(pos)}" placeholder="Name">
+            <input type="text" id="newPhone-${cssId(pos)}" placeholder="62812xxxxxxx">
+            <button type="button" class="btn btn-secondary btn-small" onclick="addPersonToPosition('${pos}')">Add</button>
+          </div>
+        ` : '';
+
+        return `
+          <div class="position-group">
+            <h3>${pos}</h3>
+            ${rows}
+            ${addRow}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function cssId(s) { return s.replace(/[^a-zA-Z0-9]/g, ''); }
+
+    function addPersonToPosition(pos) {
+      const nameInput = document.getElementById('newName-' + cssId(pos));
+      const phoneInput = document.getElementById('newPhone-' + cssId(pos));
+      const name = nameInput.value.trim();
+      if (!name) return;
+      google.script.run.withSuccessHandler(() => {
+        nameInput.value = '';
+        phoneInput.value = '';
+        loadPeople();
+      }).withFailureHandler(err => alert(err.message || err))
+        .addPerson(requesterId(), { position: pos, name: name, phone: phoneInput.value.trim() });
+    }
+
+    function loadPeople() {
+      google.script.run.withSuccessHandler(people => {
+        allPeople = people;
+        if (currentPerson) {
+          const refreshed = allPeople.find(p => p.id === currentPerson.id);
+          currentPerson = refreshed || null;
+          updateWhoAmI();
+        }
+        renderTeam();
+        onPositionChange();
+        renderSchedule();
+      }).getPeople();
+    }
+
+    function savePerson(id, name, phone) {
+      const patch = {};
+      if (name !== null) patch.name = name;
+      if (phone !== null) patch.phone = phone;
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => { alert(err.message || err); loadPeople(); })
+        .updatePerson(requesterId(), id, patch);
+    }
+
+    function setPersonActive(id, active) {
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => { alert(err.message || err); loadPeople(); })
+        .updatePerson(requesterId(), id, { active: active });
+    }
+
+    function removePerson(id) {
+      if (!confirm('Remove this person?')) return;
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => { alert(err.message || err); loadPeople(); })
+        .deletePerson(requesterId(), id);
+    }
+
+    function resetPersonPin(id) {
+      if (!confirm("Clear this person's PIN? They'll be pickable without one until they set a new PIN.")) return;
+      google.script.run.withSuccessHandler(loadPeople).withFailureHandler(err => alert(err.message || err))
+        .resetPersonPin(requesterId(), id);
+    }
+  </script>
+</body>
+</html>
