@@ -30,6 +30,9 @@
  *   SCHEDULE_TARGETS  - optional; same format as REMINDER_TARGETS, for where
  *                       the daily showroom schedule post goes. Falls back to
  *                       REMINDER_TARGETS if not set.
+ *   SHOWROOM_NAME     - optional label appended to the schedule post's
+ *                       header, e.g. "South78" -> "Schedule Showroom South78".
+ *                       Leave unset for just "Schedule Showroom".
  *   WEBHOOK_SECRET    - required for reply-to-complete (see below): an
  *                       arbitrary string only you know, appended as
  *                       ?token=... to the webhook URL you give Fonnte.
@@ -639,6 +642,17 @@ function sendDailyReminders() {
   }
 }
 
+const INDONESIAN_MONTHS = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+/** "Sunday, 16 Agustus 2026" — English weekday (matches WEEKDAYS elsewhere in this app) + Indonesian month, independent of spreadsheet locale. */
+function formatShowroomScheduleDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${INDONESIAN_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 /** Posts today's showroom schedule to SCHEDULE_TARGETS (falls back to REMINDER_TARGETS). Skips silently if nothing's scheduled today. */
 function postDailySchedule() {
   const tz = Session.getScriptTimeZone();
@@ -650,8 +664,39 @@ function postDailySchedule() {
   const targets = props.getProperty('SCHEDULE_TARGETS') || props.getProperty('REMINDER_TARGETS');
   if (!targets) return;
 
-  const lines = entries.map((e) => `• ${e.staffName}` + (e.shiftNote ? ` — ${e.shiftNote}` : ''));
-  const message = `🗓️ Today's Showroom Schedule (${today}):\n\n${lines.join('\n')}`;
+  const showroomName = props.getProperty('SHOWROOM_NAME') || '';
+  const header = 'Schedule Showroom' + (showroomName ? ' ' + showroomName : '');
+
+  // Group staff by shift code, ordered to match how shift types are listed in
+  // Team → "Manage shift types" (so the manager controls the report's order,
+  // e.g. Pagi/Middle/Siang, just by the order those types were created in).
+  const shiftTypes = getShiftTypes();
+  const labelByCode = {};
+  shiftTypes.forEach((s) => { labelByCode[s.code] = s.label; });
+  const codeOrder = shiftTypes.map((s) => s.code);
+
+  const staffByCode = {};
+  entries.forEach((e) => {
+    const code = e.shiftNote || '';
+    if (!staffByCode[code]) staffByCode[code] = [];
+    staffByCode[code].push(e.staffName);
+  });
+
+  const orderedCodes = Object.keys(staffByCode).sort((a, b) => {
+    const ai = codeOrder.indexOf(a);
+    const bi = codeOrder.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  const lines = orderedCodes.map((code) => {
+    const label = code ? (labelByCode[code] || code) : 'Belum ditentukan';
+    return `${label}: ${staffByCode[code].join(', ')}`;
+  });
+
+  const message = `${header}\n${formatShowroomScheduleDate(today)}\n${lines.join('\n')}`;
   try {
     sendFonnteMessage(targets, message);
   } catch (err) {

@@ -94,7 +94,19 @@ on who can complete a task.
   between weeks. Only Showroom Manager/Partner identities can edit
   cells; Product Consultants see it read-only with a hint to ask a
   manager. A daily trigger posts each day's roster to your WhatsApp
-  group before operations start.
+  group before operations start, formatted like:
+  ```
+  Schedule Showroom South78
+  Sunday, 16 Agustus 2026
+  Pagi: Fera, Heru, Dimas
+  Middle: Hillary
+  Siang: Pak Aji, Fahmy, Dwi P
+  ```
+  Staff are grouped by shift code (using that shift type's `Label`, not
+  the raw code), in the same order the shift types are listed in
+  "Manage shift types" — reorder or relabel there (e.g. rename `M`'s
+  label from "Malam" to "Middle") to change how the post reads. The
+  showroom name in the header comes from `SHOWROOM_NAME`.
 - **Shift types** (bottom of the Schedule tab, Manager/Partner-only) —
   the codes selectable in each schedule cell. Seeded with `P` Pagi,
   `S` Siang, `M` Malam, `OFF`, `CUTI` (matching a typical shared
@@ -161,6 +173,9 @@ on who can complete a task.
      showroom schedule post goes if it should be different from
      `REMINDER_TARGETS` (e.g. a dedicated group). Falls back to
      `REMINDER_TARGETS` if not set.
+   - `SHOWROOM_NAME` (optional) — appended to the daily schedule post's
+     header, e.g. `South78` → "Schedule Showroom South78". Leave unset
+     for just "Schedule Showroom".
    - `WEBHOOK_SECRET` (only if you want reply-to-complete — step 7) — any
      string you make up, e.g. a random 20-character password.
    - `GROQ_API_KEY` (only if you want *natural-language* replies, on top
